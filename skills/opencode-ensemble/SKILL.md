@@ -55,7 +55,7 @@ Spawn teammates only for independent, verifiable work. A good Ensemble team has 
 | QA | `build` | `true` | strong model, e.g. `open-kiro/claude-opus-5` | Tests, fixtures, regression coverage |
 | Reviewer | `explore` | `false` | e.g. `kiro-openai/gpt-5.6-sol` | Diff review, risk review, missed-test review |
 
-Model IDs are examples — verify current IDs with your provider. Always pass an explicit `model` on `team_spawn`: an omitted model falls back to the server default, which may be paid or misconfigured.
+Model IDs are examples — verify current IDs with your provider. Match cost to the task: cheap models in bulk for scouts and reviewers, smart expensive models for builders doing tricky work, different providers per role if that suits. Always pass an explicit `model` on `team_spawn`: an omitted model falls back to the server default, which may be paid or misconfigured.
 
 Start with two or three teammates. Add more only when the work has more independent slices than active teammates.
 
