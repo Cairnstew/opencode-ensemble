@@ -4,7 +4,7 @@ import { MemberRegistry, DescendantTracker, PendingPurgeApprovals } from "../src
 import { DEFAULT_CONFIG } from "../src/config"
 import { ProgressTracker } from "../src/progress"
 import { createV2Client } from "../src/v2-client"
-import { registerV2Tools, type V2ToolDef } from "../src/v2-tools"
+import { registerV2Tools, normalizePriority, type V2ToolDef } from "../src/v2-tools"
 import type { ToolDeps } from "../src/types"
 
 const TOOL_NAMES = [
@@ -117,5 +117,25 @@ describe("v2-tools (issue #36, DRY: same execute fns as V1)", () => {
       error = err
     }
     expect(String(error)).toContain("ghost")
+  })
+
+  test("priority enum is declared and invalid values are rejected", async () => {
+    const { defs, domain } = mockToolDomain()
+    await registerV2Tools(domain, mockDeps())
+    const add = defs.find((d) => d.name === "team_tasks_add")
+    const tasks = (add?.input.properties as Record<string, unknown>)["tasks"] as {
+      items: { properties: { priority: unknown } }
+    }
+    expect(tasks.items.properties.priority).toMatchObject({ enum: ["high", "medium", "low"] })
+    expect(normalizePriority(undefined)).toBe("medium")
+    expect(normalizePriority("high")).toBe("high")
+    await run(defs, "team_create", { name: "alpha" }, "ses_lead")
+    let error: unknown = null
+    try {
+      await run(defs, "team_tasks_add", { tasks: [{ content: "x", priority: "urgent" }] }, "ses_lead")
+    } catch (err) {
+      error = err
+    }
+    expect(String(error)).toContain('Invalid priority "urgent"')
   })
 })

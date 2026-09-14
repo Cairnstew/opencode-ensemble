@@ -37,6 +37,22 @@ function bool(description: string, fallback: boolean): Record<string, unknown> {
   return { type: "boolean", description, default: fallback }
 }
 
+/** Task priority enum shared by the schema and the runtime validator. */
+const TASK_PRIORITIES = ["high", "medium", "low"] as const
+type TaskPriority = (typeof TASK_PRIORITIES)[number]
+
+/** JSON Schema enum property for task priority. */
+function priority(): Record<string, unknown> {
+  return { type: "string", description: "Task priority", enum: [...TASK_PRIORITIES], default: "medium" }
+}
+
+/** Throw on unknown priority — fail fast instead of writing garbage to SQLite. */
+export function normalizePriority(value: string | undefined): TaskPriority {
+  if (value === undefined) return "medium"
+  if ((TASK_PRIORITIES as readonly string[]).includes(value)) return value as TaskPriority
+  throw new Error(`Invalid priority "${value}" — expected one of: high, medium, low.`)
+}
+
 /**
  * Register all 14 team tools on a V2 context. Each execute delegates to the
  * same implementation V1 uses (DRY) — only arg transport changes from Zod to
@@ -162,7 +178,7 @@ export async function registerV2Tools(domain: V2ToolDomain, deps: ToolDeps): Pro
               type: "object",
               properties: {
                 content: str("Task description"),
-                priority: str("Task priority: high, medium, or low"),
+                priority: priority(),
                 depends_on: {
                   type: "array",
                   items: { type: "string" },
@@ -186,7 +202,7 @@ export async function registerV2Tools(domain: V2ToolDomain, deps: ToolDeps): Pro
           {
             tasks: args.tasks.map((task) => ({
               content: task.content,
-              priority: (task.priority ?? "medium") as "high" | "medium" | "low",
+              priority: normalizePriority(task.priority),
               ...(task.depends_on ? { depends_on: task.depends_on } : {}),
             })),
           },
