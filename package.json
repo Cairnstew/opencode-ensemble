@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.17.18",
-    "@opencode-ai/sdk": "^1.17.18"
+    "@opencode-ai/sdk": "^1.17.18",
+    "@opencode/plugin": "2.0.3"
   }
 }

@@ -1,4 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
+import { Plugin as PluginV2 } from "@opencode/plugin"
 import { tool } from "@opencode-ai/plugin"
 import { OpencodeClient } from "@opencode-ai/sdk/v2"
 import path from "node:path"
@@ -671,4 +672,19 @@ const plugin: Plugin = async (input) => {
   }
 }
 
-export default plugin
+/**
+ * Dual V1/V2 export (issue #36).
+ * - V2 reads `id` + `setup()` and ignores `server()`.
+ * - V1 (>=1.18.29) calls `server()` and ignores the V2 fields.
+ * The V2 setup body lands in later phases; the V1 implementation below is
+ * unchanged so current users keep working during the port.
+ */
+export default {
+  ...PluginV2.define({
+    id: "ensemble",
+    async setup(_ctx) {
+      // V2 wiring (tools, hooks, events) lands in later phases of issue #36.
+    },
+  }),
+  server: plugin,
+}
