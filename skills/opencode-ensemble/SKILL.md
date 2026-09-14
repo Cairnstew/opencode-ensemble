@@ -50,12 +50,12 @@ Spawn teammates only for independent, verifiable work. A good Ensemble team has 
 
 | Role | Agent | Worktree | Model guidance | Use for |
 |---|---|---:|---|---|
-| Scout | `explore` | `false` | `opencode/muse-spark-1.3-contributor-free` | Codebase mapping, risk discovery, file ownership plan |
-| Builder | `build` | `true` | `opencode/nemotron-3-ultra-free` | Narrow implementation slice |
-| QA | `build` | `true` | strong free model | Tests, fixtures, regression coverage |
-| Reviewer | `explore` | `false` | `opencode/muse-spark-1.3-contributor-free` | Diff review, risk review, missed-test review |
+| Scout | `explore` | `false` | e.g. `kiro-openai/gpt-5.6-sol` | Codebase mapping, risk discovery, file ownership plan |
+| Builder | `build` | `true` | e.g. `open-kiro/claude-opus-5` | Narrow implementation slice |
+| QA | `build` | `true` | strong model, e.g. `open-kiro/claude-opus-5` | Tests, fixtures, regression coverage |
+| Reviewer | `explore` | `false` | e.g. `kiro-openai/gpt-5.6-sol` | Diff review, risk review, missed-test review |
 
-Free-tier models rotate — if a listed model is gone, pick a current free `opencode/` model. Always pass an explicit `model` on `team_spawn`: an omitted model falls back to the server default, which may be paid or misconfigured.
+Model IDs are examples — verify current IDs with your provider. Always pass an explicit `model` on `team_spawn`: an omitted model falls back to the server default, which may be paid or misconfigured.
 
 Start with two or three teammates. Add more only when the work has more independent slices than active teammates.
 
@@ -108,7 +108,7 @@ team_spawn({
   name: "scout",
   agent: "explore",
   worktree: false,
-  model: "opencode/muse-spark-1.3-contributor-free",
+  model: "kiro-openai/gpt-5.6-sol",
   claim_task: "task_abc123",
   prompt: "Trace the checkout webhook flow. Report files, data model, existing tests, risks, and a smallest-safe-change plan. Do not edit files.",
 })
@@ -116,7 +116,7 @@ team_spawn({
 team_spawn({
   name: "api-dev",
   agent: "build",
-  model: "opencode/nemotron-3-ultra-free",
+  model: "open-kiro/claude-opus-5",
   plan_approval: true,
   claim_task: "task_def456",
   prompt: "Use scout's findings to implement only the idempotency guard. Commit your work and send a task-result message with files changed and tests run.",
