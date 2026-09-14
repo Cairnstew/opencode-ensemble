@@ -140,26 +140,42 @@ describe("v2-setup (issue #36)", () => {
     expect(extractQuestionOutput(undefined)).toBe("")
   })
 
-  test("idle member that never reported gets one nudge via team_message", async () => {
+  test("setup rehydrates registry and nudges already-idle silent members", async () => {
+    const { tmpdir } = await import("node:os")
+    const { join } = await import("node:path")
+    const dbPath = join(tmpdir(), `ensemble-rehydrate-${Date.now()}.db`)
+    // Seed a file DB directly (simulates state from before a restart).
+    const { createDb } = await import("../src/db")
+    const seed = createDb(dbPath)
+    const now = Date.now()
+    seed.run(
+      "INSERT INTO team (id, name, lead_session_id, status, delegate, time_created, time_updated) VALUES (?, ?, ?, 'active', 0, ?, ?)",
+      ["team1", "alpha", "ses_lead", now, now],
+    )
+    seed.run(
+      "INSERT INTO team_member (team_id, name, session_id, agent, status, execution_status, time_created, time_updated) VALUES (?, ?, ?, 'build', 'ready', 'idle', ?, ?)",
+      ["team1", "alice", "ses_alice", now, now],
+    )
+    seed.close()
+
     const prompts: unknown[] = []
     const { ctx } = mockSetupCtx()
     const session = ctx.session as unknown as {
       prompt: (input: unknown) => Promise<unknown>
     }
-    const origPrompt = session.prompt
     session.prompt = async (input: unknown) => {
       prompts.push(input)
-      return origPrompt(input)
+      return { id: "msg_1" }
     }
-    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })
-    seedLeadAndMember(handle)
-    await handle.dispatch({ type: "session.status", data: { sessionID: "ses_alice", status: "idle" } })
-    await handle.dispatch({ type: "session.status", data: { sessionID: "ses_alice", status: "idle" } })
-    const nudges = prompts.filter((p) =>
-      JSON.stringify(p).includes("did not report"),
-    )
+    const handle = await setupEnsemble(ctx, { dbPath, dashboardPort: 0 })
+    // Registry rehydrated from SQLite despite the fresh process.
+    expect(handle.registry.getBySession("ses_alice")?.memberName).toBe("alice")
+    // Already-idle silent member got its one nudge on startup.
+    const nudges = prompts.filter((p) => JSON.stringify(p).includes("did not report"))
     expect(nudges.length).toBe(1)
     expect(JSON.stringify(nudges[0])).toContain("ses_alice")
     await handle.dispose()
+    const { rm } = await import("node:fs/promises")
+    await rm(dbPath, { force: true })
   })
 })

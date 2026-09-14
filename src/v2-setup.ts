@@ -11,6 +11,7 @@ import type { ToolDeps } from "./types"
 import { ProgressTracker } from "./progress"
 import { checkToolIsolation, shouldNudgeIdleMember } from "./hooks"
 import { hasReportedCompletion } from "./messaging"
+import { rehydrateRegistry } from "./recovery"
 import { findTeamBySession } from "./types"
 import { loadConfig } from "./config"
 import { TokenBucket } from "./rate-limit"
@@ -98,6 +99,38 @@ export async function setupEnsemble(
   const activityBuffer = new ActivityBuffer()
   const progressTracker = new ProgressTracker()
   const nudgedMembers = new Set<string>()
+
+  // Rehydrate the in-memory registry from SQLite so members from before a
+  // restart are visible again. Without this, their events are ignored and
+  // teams freeze silently after every server restart (seen live 2026-09-14).
+  const rehydrated = rehydrateRegistry(db, registry)
+  if (rehydrated > 0) log(`init:registry:rehydrated members=${rehydrated}`)
+
+  /** Send the idle-without-report nudge once per member. */
+  const nudgeMember = (teamId: string, memberName: string, sessionId: string): void => {
+    const nudgeKey = `${teamId}:${memberName}`
+    if (nudgedMembers.has(nudgeKey)) return
+    if (!shouldNudgeIdleMember(db, teamId, memberName)) return
+    if (hasReportedCompletion(db, teamId, memberName)) return
+    nudgedMembers.add(nudgeKey)
+    log(`nudge:idle-without-report name=${memberName}`)
+    void deliverPrompt(
+      ctx.session as unknown as V2SessionPort,
+      sessionId,
+      "[System]: You completed your work but did not report results. Send your findings to the lead via team_message now.",
+    ).catch((err) => {
+      log(`nudge:idle-without-report:failed name=${memberName} err=${err instanceof Error ? err.message : String(err)}`)
+    })
+  }
+
+  // Startup sweep: members already idle (e.g. finished while the plugin was
+  // down) never emit a fresh transition, so nudge them now.
+  const silent = db.query(
+    `SELECT tm.team_id, tm.name, tm.session_id FROM team_member tm
+     JOIN team t ON tm.team_id = t.id
+     WHERE t.status = 'active' AND tm.status = 'ready'`,
+  ).all() as Array<{ team_id: string; name: string; session_id: string }>
+  for (const member of silent) nudgeMember(member.team_id, member.name, member.session_id)
   const rateLimiter = new TokenBucket({
     capacity: config.rateLimitCapacity,
     refillRate: 2,
@@ -112,25 +145,8 @@ export async function setupEnsemble(
     // team_message. Without this, weak models finish silently and the lead
     // waits forever — the exact failure seen live on 2026-09-14.
     if (transition && transition.to === "ready" && transition.from === "busy") {
-      const nudgeKey = `${transition.teamId}:${transition.memberName}`
-      if (
-        !nudgedMembers.has(nudgeKey) &&
-        shouldNudgeIdleMember(db, transition.teamId, transition.memberName) &&
-        !hasReportedCompletion(db, transition.teamId, transition.memberName)
-      ) {
-        nudgedMembers.add(nudgeKey)
-        const entry = registry.getByName(transition.teamId, transition.memberName)
-        if (entry) {
-          log(`nudge:idle-without-report name=${transition.memberName}`)
-          void deliverPrompt(
-            ctx.session as unknown as V2SessionPort,
-            entry.sessionId,
-            "[System]: You completed your work but did not report results. Send your findings to the lead via team_message now.",
-          ).catch((err) => {
-            log(`nudge:idle-without-report:failed name=${transition.memberName} err=${err instanceof Error ? err.message : String(err)}`)
-          })
-        }
-      }
+      const entry = registry.getByName(transition.teamId, transition.memberName)
+      if (entry) nudgeMember(transition.teamId, transition.memberName, entry.sessionId)
     }
     if (transition && rpc) {
       await emitMemberEvent(rpc, transition).catch(() => {
