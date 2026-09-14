@@ -11,3 +11,12 @@ export function log(msg: string): void {
   if (!_client) return
   _client.app.log({ service: "ensemble", level: "info", message: msg }).catch(() => {})
 }
+
+/**
+ * V2 fallback logger. The V2 plugin context exposes no app.log, so server
+ * log lines go to stdout with a prefix (the host captures plugin stdout
+ * into its own log). Used only by V2 setup paths.
+ */
+export function vlog(msg: string): void {
+  console.log(`[ensemble] ${msg}`)
+}

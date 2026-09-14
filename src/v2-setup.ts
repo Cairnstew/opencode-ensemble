@@ -20,7 +20,7 @@ import { buildLeadSystemPrompt, buildTeammateSystemPrompt, buildTeamCompactionCo
 import { startDashboard, type DashboardServer } from "./dashboard"
 import { EnsembleRpc, emitMemberEvent, emitNoticeEvent } from "./v2-rpc"
 import { isWorktreeInstance } from "./util"
-import { log } from "./log"
+import { vlog } from "./log"
 
 /** V2 setup context subset (structural, mock-friendly). */
 export interface V2SetupContext {
@@ -104,7 +104,7 @@ export async function setupEnsemble(
   // restart are visible again. Without this, their events are ignored and
   // teams freeze silently after every server restart (seen live 2026-09-14).
   const rehydrated = rehydrateRegistry(db, registry)
-  if (rehydrated > 0) log(`init:registry:rehydrated members=${rehydrated}`)
+  if (rehydrated > 0) vlog(`init:registry:rehydrated members=${rehydrated}`)
 
   /** Send the idle-without-report nudge once per member. */
   const nudgeMember = (teamId: string, memberName: string, sessionId: string): void => {
@@ -113,13 +113,13 @@ export async function setupEnsemble(
     if (!shouldNudgeIdleMember(db, teamId, memberName)) return
     if (hasReportedCompletion(db, teamId, memberName)) return
     nudgedMembers.add(nudgeKey)
-    log(`nudge:idle-without-report name=${memberName}`)
+    vlog(`nudge:idle-without-report name=${memberName}`)
     void deliverPrompt(
       ctx.session as unknown as V2SessionPort,
       sessionId,
       "[System]: You completed your work but did not report results. Send your findings to the lead via team_message now.",
     ).catch((err) => {
-      log(`nudge:idle-without-report:failed name=${memberName} err=${err instanceof Error ? err.message : String(err)}`)
+      vlog(`nudge:idle-without-report:failed name=${memberName} err=${err instanceof Error ? err.message : String(err)}`)
     })
   }
 
@@ -188,7 +188,7 @@ export async function setupEnsemble(
       },
     })
   } catch (err) {
-    log(`init:rpc:failed err=${err instanceof Error ? err.message : String(err)}`)
+    vlog(`init:rpc:failed err=${err instanceof Error ? err.message : String(err)}`)
   }
 
   // Live event loop — fire-and-forget; dispose() aborts it.
@@ -251,7 +251,7 @@ export async function setupEnsemble(
       teamInfo.role === "lead"
         ? buildLeadSystemPrompt(db, teamInfo.teamId, config)
         : buildTeammateSystemPrompt(db, teamInfo.teamId, teamInfo.memberName ?? "unknown")
-    log(`system-prompt:injected role=${teamInfo.role} len=${prompt.length}`)
+    vlog(`system-prompt:injected role=${teamInfo.role} len=${prompt.length}`)
     event.system.push({ type: "text", text: prompt })
   })
 
@@ -290,7 +290,7 @@ export async function setupEnsemble(
   const dashboardPort = options.dashboardPort ?? config.dashboardPort
   if (dashboardPort !== 0 && !isWorktreeInstance(ctx.location.directory)) {
     dashboard = await startDashboard(db, dashboardPort, { activityBuffer, client }).catch((err) => {
-      log(`init:dashboard:failed err=${err instanceof Error ? err.message : String(err)}`)
+      vlog(`init:dashboard:failed err=${err instanceof Error ? err.message : String(err)}`)
       return null
     })
   }
