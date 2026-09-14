@@ -34,6 +34,7 @@
  * end even on failure. Expect ~5-8 minutes on a free model.
  */
 import { $ } from "bun"
+import path from "node:path"
 
 const MODEL = process.env.ENSEMBLE_EVAL_MODEL ?? "opencode/muse-spark-1.3-contributor-free"
 const TEAM = `eval-${Date.now().toString(36)}`
@@ -67,8 +68,8 @@ async function api(method: string, path: string, body?: unknown): Promise<unknow
 
 /** Read ensemble.db directly (same adapter the plugin uses). */
 async function dbAll(sql: string): Promise<Array<Record<string, unknown>>> {
-  const { createDb } = await import("../src/db")
-  const db = createDb(`${process.env.HOME}/.config/opencode/ensemble.db`)
+  const { createDb, getDbPath } = await import("../src/db")
+  const db = createDb(getDbPath())
   const rows = db.query(sql).all() as Array<Record<string, unknown>>
   db.close()
   return rows
@@ -126,9 +127,18 @@ if (!providerID || !modelID) throw new Error(`ENSEMBLE_EVAL_MODEL must be provid
 
 // --- setup: lead session pinned to the eval model ---
 console.log(`model=${MODEL} team=${TEAM}`)
+// Session location = this repo root (derived, no hardcoded paths).
+const REPO_ROOT = path.resolve(import.meta.dir, "..")
 const lead = (await api("post", "/api/session", {
   title: `ensemble-eval-${TEAM}`,
-  location: { directory: `${process.env.HOME}/repositories/misc/opencode-ensemble-v2` },
+  location: { directory: REPO_ROOT },
+  // No file/shell access: the agent must use team tools (a prior run read
+  // tool source and wrote SQL directly instead of calling the tools).
+  permissions: ["shell", "read", "edit", "write", "glob", "grep"].map((action) => ({
+    action,
+    resource: "*",
+    effect: "deny",
+  })),
 })) as { id: string }
 const leadID = lead.id as string
 await api("post", `/api/session/${leadID}/model`, { model: { providerID, id: modelID } })
