@@ -24,7 +24,7 @@ team_spawn({
   name: "scout",
   agent: "explore",
   worktree: false,
-  model: "kiro-openai/gpt-5.6-sol",
+  model: "openai/gpt-5-mini",
   prompt: "<scout prompt>",
 })
 ```
@@ -87,7 +87,7 @@ team_spawn({
   name: "reviewer",
   agent: "explore",
   worktree: false,
-  model: "kiro-openai/gpt-5.6-sol",
+  model: "openai/gpt-5-mini",
   prompt: "<reviewer prompt>",
 })
 ```

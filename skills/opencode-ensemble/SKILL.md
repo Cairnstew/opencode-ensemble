@@ -50,10 +50,10 @@ Spawn teammates only for independent, verifiable work. A good Ensemble team has 
 
 | Role | Agent | Worktree | Model guidance | Use for |
 |---|---|---:|---|---|
-| Scout | `explore` | `false` | e.g. `kiro-openai/gpt-5.6-sol` | Codebase mapping, risk discovery, file ownership plan |
-| Builder | `build` | `true` | e.g. `open-kiro/claude-opus-5` | Narrow implementation slice |
-| QA | `build` | `true` | strong model, e.g. `open-kiro/claude-opus-5` | Tests, fixtures, regression coverage |
-| Reviewer | `explore` | `false` | e.g. `kiro-openai/gpt-5.6-sol` | Diff review, risk review, missed-test review |
+| Scout | `explore` | `false` | e.g. `openai/gpt-5-mini` | Codebase mapping, risk discovery, file ownership plan |
+| Builder | `build` | `true` | e.g. `anthropic/claude-opus-4-7` | Narrow implementation slice |
+| QA | `build` | `true` | strong model, e.g. `anthropic/claude-opus-4-7` | Tests, fixtures, regression coverage |
+| Reviewer | `explore` | `false` | e.g. `openai/gpt-5-mini` | Diff review, risk review, missed-test review |
 
 Model IDs are examples — verify current IDs with your provider. Match cost to the task: cheap models in bulk for scouts and reviewers, smart expensive models for builders doing tricky work, different providers per role if that suits. Always pass an explicit `model` on `team_spawn`: an omitted model falls back to the server default, which may be paid or misconfigured.
 
@@ -108,7 +108,7 @@ team_spawn({
   name: "scout",
   agent: "explore",
   worktree: false,
-  model: "kiro-openai/gpt-5.6-sol",
+  model: "openai/gpt-5-mini",
   claim_task: "task_abc123",
   prompt: "Trace the checkout webhook flow. Report files, data model, existing tests, risks, and a smallest-safe-change plan. Do not edit files.",
 })
@@ -116,7 +116,7 @@ team_spawn({
 team_spawn({
   name: "api-dev",
   agent: "build",
-  model: "open-kiro/claude-opus-5",
+  model: "anthropic/claude-opus-4-7",
   plan_approval: true,
   claim_task: "task_def456",
   prompt: "Use scout's findings to implement only the idempotency guard. Commit your work and send a task-result message with files changed and tests run.",

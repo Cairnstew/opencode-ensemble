@@ -40,10 +40,10 @@ The lead agent:
 2. Adds independent tasks first and records the generated task IDs.
 3. Adds dependent QA and review tasks with `depends_on` using real returned IDs.
 4. Spawns a small team with explicit roles:
-   - scout: explore agent, worktree disabled, model kiro-openai/gpt-5.6-sol (example)
-   - api-dev: build agent, own worktree, model open-kiro/claude-opus-5 (example), plan_approval: true
-   - qa: build agent, own worktree, model open-kiro/claude-opus-5 (example)
-   - reviewer: explore agent, worktree disabled, model kiro-openai/gpt-5.6-sol (example)
+   - scout: explore agent, worktree disabled, model openai/gpt-5-mini (example)
+   - api-dev: build agent, own worktree, model anthropic/claude-opus-4-7 (example), plan_approval: true
+   - qa: build agent, own worktree, model anthropic/claude-opus-4-7 (example)
+   - reviewer: explore agent, worktree disabled, model openai/gpt-5-mini (example)
 ```
 
 The lead uses the task board to make sequencing visible. Record the returned task IDs before creating dependent tasks:
@@ -79,7 +79,7 @@ team_spawn({
   name: "scout",
   agent: "explore",
   worktree: false,
-  model: "kiro-openai/gpt-5.6-sol",
+  model: "openai/gpt-5-mini",
   claim_task: "task_abc123",
   prompt: "Trace the checkout webhook flow. Report the files, data model, existing tests, and the smallest safe implementation plan. Do not edit files.",
 })
@@ -87,7 +87,7 @@ team_spawn({
 team_spawn({
   name: "api-dev",
   agent: "build",
-  model: "open-kiro/claude-opus-5",
+  model: "anthropic/claude-opus-4-7",
   plan_approval: true,
   claim_task: "task_def456",
   prompt: "After scout reports, implement the idempotency guard. Keep the change narrow. Commit your work and send a task-result message.",
