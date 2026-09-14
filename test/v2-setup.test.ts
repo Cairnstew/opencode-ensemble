@@ -178,6 +178,19 @@ describe("v2-setup (issue #36)", () => {
     expect(nudges.length).toBe(1)
     expect(JSON.stringify(nudges[0])).toContain("ses_alice")
     await handle.dispose()
+    // A second setup (hot-reload) must NOT nudge again within the hour.
+    const prompts2: unknown[] = []
+    const { ctx: ctxReload } = mockSetupCtx()
+    const sessionReload = ctxReload.session as unknown as {
+      prompt: (input: unknown) => Promise<unknown>
+    }
+    sessionReload.prompt = async (input: unknown) => {
+      prompts2.push(input)
+      return { id: "msg_1" }
+    }
+    const handle2 = await setupEnsemble(ctxReload, { dbPath, dashboardPort: 0 })
+    expect(prompts2.filter((p) => JSON.stringify(p).includes("did not report")).length).toBe(0)
+    await handle2.dispose()
     const { rm } = await import("node:fs/promises")
     await rm(dbPath, { force: true })
   })
