@@ -30,6 +30,7 @@ export interface V2SetupContext {
     hook(name: string, cb: (event: never) => unknown): Promise<{ dispose(): Promise<void> }>
   }
   worktree: V2Context["worktree"]
+  permission: V2Context["permission"]
   event: {
     subscribe(opts?: { signal?: AbortSignal }): AsyncIterable<V2EventLike>
   }
