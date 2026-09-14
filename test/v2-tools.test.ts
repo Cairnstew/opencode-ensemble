@@ -30,6 +30,7 @@ function mockDeps() {
       create: async () => ({ id: "ses_new" }),
       prompt: async () => ({ id: "msg_1" }),
       switchAgent: async () => undefined,
+      switchModel: async () => undefined,
       interrupt: async () => undefined,
       get: async () => ({ id: "ses_x" }),
       context: async () => [],

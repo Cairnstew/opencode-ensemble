@@ -21,6 +21,10 @@ function mockCtx() {
         calls.push({ domain: "session", method: "switchAgent", input })
         return undefined
       },
+      switchModel: async (input: Record<string, unknown>) => {
+        calls.push({ domain: "session", method: "switchModel", input })
+        return undefined
+      },
       interrupt: async (input: Record<string, unknown>) => {
         calls.push({ domain: "session", method: "interrupt", input })
         return { aborted: true }
@@ -100,6 +104,25 @@ describe("v2-client adapter (issue #36, DRY: reuses all tool logic)", () => {
       text: "hello",
       delivery: "queue",
     })
+  })
+
+  test("session.promptAsync applies the model via switchModel first", async () => {
+    const { calls, ctx } = mockCtx()
+    const client = createV2Client(ctx as never)
+    await client.session.promptAsync({
+      sessionID: "ses_child",
+      parts: [{ type: "text", text: "hello" }],
+      model: { providerID: "opencode", modelID: "muse-spark-1.3-contributor-free" },
+    })
+    expect(calls[0]).toMatchObject({
+      domain: "session",
+      method: "switchModel",
+      input: {
+        sessionID: "ses_child",
+        model: { providerID: "opencode", id: "muse-spark-1.3-contributor-free" },
+      },
+    })
+    expect(calls[1]?.input).toMatchObject({ sessionID: "ses_child", delivery: "queue" })
   })
 
   test("session.abort maps to interrupt", async () => {

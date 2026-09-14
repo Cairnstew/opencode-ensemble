@@ -7,6 +7,7 @@ export interface V2Context {
     create(input: Record<string, unknown>): Promise<{ id: string }>
     prompt(input: Record<string, unknown>): Promise<unknown>
     switchAgent(input: Record<string, unknown>): Promise<unknown>
+    switchModel(input: Record<string, unknown>): Promise<unknown>
     interrupt(input: Record<string, unknown>): Promise<unknown>
     get(input: Record<string, unknown>): Promise<unknown>
     context(input: Record<string, unknown>): Promise<unknown[]>
@@ -103,6 +104,15 @@ export function createV2Client(ctx: V2Context, deps: V2ClientDeps = {}): PluginC
       promptAsync: async (options) => {
         if (options.agent) {
           await ctx.session.switchAgent({ sessionID: options.sessionID, agent: options.agent })
+        }
+        // V2 binds model at create/admission; the shared create signature has
+        // no model slot, so apply it here (spawn is the only model passer).
+        // Caught live: without this, teammates inherit the server default.
+        if (options.model) {
+          await ctx.session.switchModel({
+            sessionID: options.sessionID,
+            model: { providerID: options.model.providerID, id: options.model.modelID },
+          })
         }
         const text = options.parts
           .filter((part) => part.type === "text")
