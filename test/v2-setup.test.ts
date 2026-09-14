@@ -62,7 +62,7 @@ function seedLeadAndMember(handle: Awaited<ReturnType<typeof setupEnsemble>>) {
 describe("v2-setup (issue #36)", () => {
   test("dispatched status events flow to member state", async () => {
     const { ctx } = mockSetupCtx()
-    const handle = await setupEnsemble(ctx, { dbPath: ":memory:" })
+    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })
     seedLeadAndMember(handle)
     await handle.dispatch({ type: "session.status", data: { sessionID: "ses_alice", status: "idle" } })
     const row = handle.db.query("SELECT status FROM team_member WHERE name = 'alice'").get() as {
@@ -74,7 +74,7 @@ describe("v2-setup (issue #36)", () => {
 
   test("tool execute.before blocks team tools for sub-agents", async () => {
     const { ctx, hooks } = mockSetupCtx()
-    const handle = await setupEnsemble(ctx, { dbPath: ":memory:" })
+    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })
     seedLeadAndMember(handle)
     handle.tracker.track("ses_child", "ses_alice")
     const before = hooks["tool"]?.[0]
@@ -95,7 +95,7 @@ describe("v2-setup (issue #36)", () => {
 
   test("shell hook is registered (per-session env unavailable on V2 — see OQ-V2-shell)", async () => {
     const { ctx, hooks } = mockSetupCtx()
-    const handle = await setupEnsemble(ctx, { dbPath: ":memory:" })
+    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })
     seedLeadAndMember(handle)
     const shellHook = hooks["shell"]?.[0]
     expect(shellHook).toBeDefined()
@@ -107,7 +107,7 @@ describe("v2-setup (issue #36)", () => {
 
   test("session context hook appends team system prompt for team sessions", async () => {
     const { ctx, hooks } = mockSetupCtx()
-    const handle = await setupEnsemble(ctx, { dbPath: ":memory:" })
+    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })
     seedLeadAndMember(handle)
     const sessionHooks = hooks["session"] ?? []
     expect(sessionHooks.length).toBeGreaterThan(0)
@@ -116,6 +116,21 @@ describe("v2-setup (issue #36)", () => {
     await contextHook?.(event as never)
     expect(event.system.length).toBe(1)
     expect(event.system[0]?.text).toContain("alpha")
+    await handle.dispose()
+  })
+
+  test("dashboard serves team state on the configured port", async () => {
+    const { ctx } = mockSetupCtx()
+    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 47999 })
+    seedLeadAndMember(handle)
+    const res = await fetch("http://localhost:47999/api/health")
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ensemble?: boolean }
+    expect(body.ensemble).toBe(true)
+    const teams = (await (await fetch("http://localhost:47999/api/state")).json()) as {
+      teams?: unknown[]
+    }
+    expect(teams.teams?.length).toBe(1)
     await handle.dispose()
   })
 })

@@ -14,6 +14,8 @@ import { loadConfig } from "./config"
 import { TokenBucket } from "./rate-limit"
 import { ActivityBuffer, recordFromToolBefore, recordFromToolAfter } from "./activity"
 import { buildLeadSystemPrompt, buildTeammateSystemPrompt, buildTeamCompactionContext } from "./system-prompt"
+import { startDashboard, type DashboardServer } from "./dashboard"
+import { isWorktreeInstance } from "./util"
 import { log } from "./log"
 
 /** V2 setup context subset (structural, mock-friendly). */
@@ -40,6 +42,8 @@ export interface V2SetupContext {
 export interface SetupOptions {
   /** SQLite path. Defaults to the global ensemble.db. */
   dbPath?: string
+  /** Dashboard port. Defaults to config; 0 disables. */
+  dashboardPort?: number
 }
 
 /** Live handle for a V2 ensemble instance. */
@@ -168,6 +172,16 @@ export async function setupEnsemble(
   }
   await registerV2Tools(ctx.tool, deps)
 
+  // Dashboard mirrors V1: main instance only, skipped when port is 0.
+  let dashboard: DashboardServer | null = null
+  const dashboardPort = options.dashboardPort ?? config.dashboardPort
+  if (dashboardPort !== 0 && !isWorktreeInstance(ctx.location.directory)) {
+    dashboard = await startDashboard(db, dashboardPort, { activityBuffer, client }).catch((err) => {
+      log(`init:dashboard:failed err=${err instanceof Error ? err.message : String(err)}`)
+      return null
+    })
+  }
+
   return {
     db,
     registry,
@@ -175,6 +189,7 @@ export async function setupEnsemble(
     dispatch,
     dispose: async () => {
       controller.abort()
+      dashboard?.stop()
     },
   }
 }
