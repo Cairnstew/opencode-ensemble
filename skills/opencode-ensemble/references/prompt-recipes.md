@@ -24,7 +24,7 @@ team_spawn({
   name: "scout",
   agent: "explore",
   worktree: false,
-  model: "openai/gpt-5.3-codex-spark",
+  model: "opencode/muse-spark-1.3-contributor-free",
   prompt: "<scout prompt>",
 })
 ```
@@ -87,7 +87,7 @@ team_spawn({
   name: "reviewer",
   agent: "explore",
   worktree: false,
-  model: "openai/gpt-5.3-codex-spark",
+  model: "opencode/muse-spark-1.3-contributor-free",
   prompt: "<reviewer prompt>",
 })
 ```

@@ -5,7 +5,7 @@ license: MIT
 compatibility: "OpenCode with the @hueyexe/opencode-ensemble plugin installed"
 metadata:
   author: hueyexe
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # OpenCode Ensemble
@@ -50,10 +50,12 @@ Spawn teammates only for independent, verifiable work. A good Ensemble team has 
 
 | Role | Agent | Worktree | Model guidance | Use for |
 |---|---|---:|---|---|
-| Scout | `explore` | `false` | `openai/gpt-5.3-codex-spark` | Codebase mapping, risk discovery, file ownership plan |
-| Builder | `build` | `true` | `anthropic/claude-opus-4-7` | Narrow implementation slice |
-| QA | `build` | `true` | strong balanced model | Tests, fixtures, regression coverage |
-| Reviewer | `explore` | `false` | `openai/gpt-5.3-codex-spark` | Diff review, risk review, missed-test review |
+| Scout | `explore` | `false` | `opencode/muse-spark-1.3-contributor-free` | Codebase mapping, risk discovery, file ownership plan |
+| Builder | `build` | `true` | `opencode/nemotron-3-ultra-free` | Narrow implementation slice |
+| QA | `build` | `true` | strong free model | Tests, fixtures, regression coverage |
+| Reviewer | `explore` | `false` | `opencode/muse-spark-1.3-contributor-free` | Diff review, risk review, missed-test review |
+
+Free-tier models rotate — if a listed model is gone, pick a current free `opencode/` model. Always pass an explicit `model` on `team_spawn`: an omitted model falls back to the server default, which may be paid or misconfigured.
 
 Start with two or three teammates. Add more only when the work has more independent slices than active teammates.
 
@@ -74,6 +76,7 @@ Start with two or three teammates. Add more only when the work has more independ
 - Do not tell teammates to report only in plain text. They must use `team_message`.
 - Do not merge a teammate branch without reading its result and inspecting the diff.
 - Do not call the work complete until the repository's verification commands pass or you have clearly reported the blocker.
+- On OpenCode v2, `team_view` resolves the session without navigating the TUI, and `team_cleanup` purge needs human approval of the preview before confirmation.
 
 ## Minimal Example
 
@@ -105,7 +108,7 @@ team_spawn({
   name: "scout",
   agent: "explore",
   worktree: false,
-  model: "openai/gpt-5.3-codex-spark",
+  model: "opencode/muse-spark-1.3-contributor-free",
   claim_task: "task_abc123",
   prompt: "Trace the checkout webhook flow. Report files, data model, existing tests, risks, and a smallest-safe-change plan. Do not edit files.",
 })
@@ -113,7 +116,7 @@ team_spawn({
 team_spawn({
   name: "api-dev",
   agent: "build",
-  model: "anthropic/claude-opus-4-7",
+  model: "opencode/nemotron-3-ultra-free",
   plan_approval: true,
   claim_task: "task_def456",
   prompt: "Use scout's findings to implement only the idempotency guard. Commit your work and send a task-result message with files changed and tests run.",

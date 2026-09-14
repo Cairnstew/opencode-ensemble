@@ -40,10 +40,10 @@ The lead agent:
 2. Adds independent tasks first and records the generated task IDs.
 3. Adds dependent QA and review tasks with `depends_on` using real returned IDs.
 4. Spawns a small team with explicit roles:
-   - scout: explore agent, worktree disabled, model openai/gpt-5.3-codex-spark
-   - api-dev: build agent, own worktree, model anthropic/claude-opus-4-7, plan_approval: true
-   - qa: build agent, own worktree, model anthropic/claude-sonnet-4-6
-   - reviewer: explore agent, worktree disabled, model openai/gpt-5.3-codex-spark
+   - scout: explore agent, worktree disabled, model opencode/muse-spark-1.3-contributor-free
+   - api-dev: build agent, own worktree, model opencode/nemotron-3-ultra-free, plan_approval: true
+   - qa: build agent, own worktree, model opencode/nemotron-3-ultra-free
+   - reviewer: explore agent, worktree disabled, model opencode/muse-spark-1.3-contributor-free
 ```
 
 The lead uses the task board to make sequencing visible. Record the returned task IDs before creating dependent tasks:
@@ -79,7 +79,7 @@ team_spawn({
   name: "scout",
   agent: "explore",
   worktree: false,
-  model: "openai/gpt-5.3-codex-spark",
+  model: "opencode/muse-spark-1.3-contributor-free",
   claim_task: "task_abc123",
   prompt: "Trace the checkout webhook flow. Report the files, data model, existing tests, and the smallest safe implementation plan. Do not edit files.",
 })
@@ -87,7 +87,7 @@ team_spawn({
 team_spawn({
   name: "api-dev",
   agent: "build",
-  model: "anthropic/claude-opus-4-7",
+  model: "opencode/nemotron-3-ultra-free",
   plan_approval: true,
   claim_task: "task_def456",
   prompt: "After scout reports, implement the idempotency guard. Keep the change narrow. Commit your work and send a task-result message.",

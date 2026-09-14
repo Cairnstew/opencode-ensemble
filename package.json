@@ -30,6 +30,7 @@
     "lint": "bunx biome lint src/",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "eval:smoke": "bun eval/smoke.ts",
     "build": "bun build src/index.ts --outdir dist --target node",
     "prepublishOnly": "bun run typecheck && bun test && bun run build"
   },

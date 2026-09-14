@@ -48,8 +48,10 @@ describe("opencode-ensemble agent skill", () => {
     expect(skill).toContain("references/lead-checklists.md");
     expect(skill).toContain("references/anti-patterns.md");
     expect(skill).toContain("references/eval-scenarios.md");
-    expect(skill).toContain("openai/gpt-5.3-codex-spark");
-    expect(skill).toContain("anthropic/claude-opus-4-7");
+    expect(skill).toContain("opencode/muse-spark-1.3-contributor-free");
+    expect(skill).toContain("opencode/nemotron-3-ultra-free");
+    expect(skill).not.toContain("openai/gpt-5.3-codex-spark");
+    expect(skill).not.toContain("anthropic/claude-opus-4-7");
     expect(skill).not.toContain("opencode/gpt-5-nano");
     expect(skill).not.toContain("anthropic/claude-opus-4-6");
     expect(skill).toContain("Do not invent task IDs");
