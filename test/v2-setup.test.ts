@@ -46,8 +46,7 @@ function mockSetupCtx() {
   return { ctx: ctx as unknown as V2SetupContext, hooks }
 }
 
-function seedLeadAndMember(handle: Awaited<ReturnType<typeof setupEnsemble>>) {
-  const now = Date.now()
+function seedLeadAndMember(handle: Awaited<ReturnType<typeof setupEnsemble>>) {  const now = Date.now()
   handle.db.run(
     "INSERT INTO team (id, name, lead_session_id, status, delegate, time_created, time_updated) VALUES (?, ?, ?, 'active', 0, ?, ?)",
     ["team1", "alpha", "ses_lead", now, now],
@@ -139,5 +138,28 @@ describe("v2-setup (issue #36)", () => {
       extractQuestionOutput({ content: [{ type: "text", text: "yes" }, { type: "other" }] }),
     ).toBe("yes")
     expect(extractQuestionOutput(undefined)).toBe("")
+  })
+
+  test("idle member that never reported gets one nudge via team_message", async () => {
+    const prompts: unknown[] = []
+    const { ctx } = mockSetupCtx()
+    const session = ctx.session as unknown as {
+      prompt: (input: unknown) => Promise<unknown>
+    }
+    const origPrompt = session.prompt
+    session.prompt = async (input: unknown) => {
+      prompts.push(input)
+      return origPrompt(input)
+    }
+    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })
+    seedLeadAndMember(handle)
+    await handle.dispatch({ type: "session.status", data: { sessionID: "ses_alice", status: "idle" } })
+    await handle.dispatch({ type: "session.status", data: { sessionID: "ses_alice", status: "idle" } })
+    const nudges = prompts.filter((p) =>
+      JSON.stringify(p).includes("did not report"),
+    )
+    expect(nudges.length).toBe(1)
+    expect(JSON.stringify(nudges[0])).toContain("ses_alice")
+    await handle.dispose()
   })
 })

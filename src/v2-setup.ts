@@ -3,12 +3,14 @@ import { createDb, getDbPath } from "./db"
 import type { MemberRegistry, DescendantTracker } from "./state"
 import { MemberRegistry as MemberRegistryImpl, DescendantTracker as DescendantTrackerImpl, PendingPurgeApprovals } from "./state"
 import { dispatchV2Event, type V2EventLike } from "./v2-events"
+import { deliverPrompt, type V2SessionPort } from "./v2-session"
 import type { V2Context } from "./v2-client"
 import { createV2Client } from "./v2-client"
 import { registerV2Tools } from "./v2-tools"
 import type { ToolDeps } from "./types"
 import { ProgressTracker } from "./progress"
-import { checkToolIsolation } from "./hooks"
+import { checkToolIsolation, shouldNudgeIdleMember } from "./hooks"
+import { hasReportedCompletion } from "./messaging"
 import { findTeamBySession } from "./types"
 import { loadConfig } from "./config"
 import { TokenBucket } from "./rate-limit"
@@ -95,6 +97,7 @@ export async function setupEnsemble(
   const purgeApprovals = new PendingPurgeApprovals()
   const activityBuffer = new ActivityBuffer()
   const progressTracker = new ProgressTracker()
+  const nudgedMembers = new Set<string>()
   const rateLimiter = new TokenBucket({
     capacity: config.rateLimitCapacity,
     refillRate: 2,
@@ -103,9 +106,32 @@ export async function setupEnsemble(
   const controller = new AbortController()
 
   const dispatch = async (event: V2EventLike): Promise<void> => {
-    // State transition only. Wake/nudge glue (needs the full ToolDeps +
-    // adapted client) lands with the notification slice.
     const transition = dispatchV2Event(db, registry, tracker, event)
+    // Idle-without-report nudge (parity with V1): a member that went idle
+    // without ever messaging the lead gets ONE reminder to report via
+    // team_message. Without this, weak models finish silently and the lead
+    // waits forever — the exact failure seen live on 2026-09-14.
+    if (transition && transition.to === "ready" && transition.from === "busy") {
+      const nudgeKey = `${transition.teamId}:${transition.memberName}`
+      if (
+        !nudgedMembers.has(nudgeKey) &&
+        shouldNudgeIdleMember(db, transition.teamId, transition.memberName) &&
+        !hasReportedCompletion(db, transition.teamId, transition.memberName)
+      ) {
+        nudgedMembers.add(nudgeKey)
+        const entry = registry.getByName(transition.teamId, transition.memberName)
+        if (entry) {
+          log(`nudge:idle-without-report name=${transition.memberName}`)
+          void deliverPrompt(
+            ctx.session as unknown as V2SessionPort,
+            entry.sessionId,
+            "[System]: You completed your work but did not report results. Send your findings to the lead via team_message now.",
+          ).catch((err) => {
+            log(`nudge:idle-without-report:failed name=${transition.memberName} err=${err instanceof Error ? err.message : String(err)}`)
+          })
+        }
+      }
+    }
     if (transition && rpc) {
       await emitMemberEvent(rpc, transition).catch(() => {
         // Companions are optional — never break the state machine for them.
