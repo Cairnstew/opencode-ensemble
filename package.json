@@ -4,6 +4,11 @@
   "description": "Agent teams for OpenCode — parallel agents with peer-to-peer communication, shared tasks, and coordinated execution",
   "module": "src/index.ts",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./src/index.ts",
+    "./rpc": "./src/rpc.ts",
+    "./tui": "./src/tui.ts"
+  },
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -40,7 +45,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",
-    "@types/bun": "latest"
+    "@opentui/core": "0.5.10",
+    "@opentui/solid": "0.5.10",
+    "@types/bun": "latest",
+    "solid-js": "1.9.0"
   },
   "peerDependencies": {
     "typescript": "^5"

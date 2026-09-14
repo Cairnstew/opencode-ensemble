@@ -15,6 +15,7 @@ import { TokenBucket } from "./rate-limit"
 import { ActivityBuffer, recordFromToolBefore, recordFromToolAfter } from "./activity"
 import { buildLeadSystemPrompt, buildTeammateSystemPrompt, buildTeamCompactionContext } from "./system-prompt"
 import { startDashboard, type DashboardServer } from "./dashboard"
+import { EnsembleRpc, emitMemberEvent, emitNoticeEvent } from "./v2-rpc"
 import { isWorktreeInstance } from "./util"
 import { log } from "./log"
 
@@ -32,6 +33,12 @@ export interface V2SetupContext {
   tool: {
     hook(name: string, cb: (event: never) => unknown): Promise<{ dispose(): Promise<void> }>
     transform(cb: (editor: never) => void): Promise<{ dispose(): Promise<void> }>
+  }
+  rpc: {
+    register(
+      definition: unknown,
+      handlers: Record<string, (input: unknown, context: unknown) => Promise<unknown>>,
+    ): Promise<{ events: { emit(name: string, data: unknown): Promise<unknown> } }>
   }
   shell: {
     hook(name: string, cb: (event: never) => unknown): Promise<{ dispose(): Promise<void> }>
@@ -98,7 +105,48 @@ export async function setupEnsemble(
   const dispatch = async (event: V2EventLike): Promise<void> => {
     // State transition only. Wake/nudge glue (needs the full ToolDeps +
     // adapted client) lands with the notification slice.
-    dispatchV2Event(db, registry, tracker, event)
+    const transition = dispatchV2Event(db, registry, tracker, event)
+    if (transition && rpc) {
+      await emitMemberEvent(rpc, transition).catch(() => {
+        // Companions are optional — never break the state machine for them.
+      })
+      if (transition.to === "ready" && transition.from === "busy") {
+        await emitNoticeEvent(rpc, {
+          title: "Team",
+          message: `${transition.memberName} finished`,
+          variant: "success",
+        }).catch(() => undefined)
+      } else if (transition.to === "error") {
+        await emitNoticeEvent(rpc, {
+          title: "Team",
+          message: `${transition.memberName} errored`,
+          variant: "error",
+        }).catch(() => undefined)
+      }
+    }
+  }
+
+  // RPC bridge for terminal companions (toasts, navigation). Best-effort:
+  // a failed registration must not break tools, hooks, or events.
+  let rpc: { events: { emit(name: string, data: unknown): Promise<unknown> } } | null = null
+  try {
+    rpc = await ctx.rpc.register(EnsembleRpc, {
+      summary: async (input) => {
+        const team = (input as { team?: string }).team ?? ""
+        const row = db.query("SELECT status FROM team WHERE name = ?").get(team) as {
+          status: string
+        } | null
+        if (!row) return { text: `No team "${team}".` }
+        const members = db.query("SELECT name, status FROM team_member WHERE team_id IN (SELECT id FROM team WHERE name = ?)").all(team) as Array<{
+          name: string
+          status: string
+        }>
+        const summary = members.map((m) => `${m.name}: ${m.status}`).join(", ")
+        return { text: `Team "${team}" (${row.status}): ${summary || "no members"}` }
+      },
+    })
+  } catch (err) {
+    log(`init:rpc:failed err=${err instanceof Error ? err.message : String(err)}`)
   }
 
   // Live event loop — fire-and-forget; dispose() aborts it.
