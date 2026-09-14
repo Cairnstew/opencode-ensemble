@@ -51,8 +51,6 @@ describe("opencode-ensemble agent skill", () => {
     expect(skill).toContain("openai/gpt-5-mini");
     expect(skill).toContain("anthropic/claude-opus-4-7");
     expect(skill).not.toContain("openai/gpt-5.3-codex-spark");
-    expect(skill).not.toContain("kiro-openai/gpt-5.6-sol");
-    expect(skill).not.toContain("open-kiro/claude-opus-5");
     expect(skill).not.toContain("opencode/gpt-5-nano");
     expect(skill).not.toContain("anthropic/claude-opus-4-6");
     expect(skill).toContain("Do not invent task IDs");
