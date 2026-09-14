@@ -22,6 +22,9 @@ function mockSetupCtx() {
       active: async () => ({}),
       hook: hook("session"),
     },
+    permission: {
+      rules: async () => undefined,
+    },
     worktree: {
       create: async () => ({ directory: "/wt/x" }),
       remove: async () => undefined,

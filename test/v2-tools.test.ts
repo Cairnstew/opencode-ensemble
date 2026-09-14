@@ -36,6 +36,9 @@ function mockDeps() {
       context: async () => [],
       active: async () => ({}),
     },
+    permission: {
+      rules: async () => undefined,
+    },
     worktree: {
       create: async () => ({ directory: "/wt/x" }),
       remove: async () => undefined,

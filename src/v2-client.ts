@@ -19,6 +19,9 @@ export interface V2Context {
     list(): Promise<Array<{ directory: string }>>
     refresh(): Promise<unknown>
   }
+  permission: {
+    rules(input: Record<string, unknown>): Promise<unknown>
+  }
 }
 
 /** Prefix marking a workspace id that is really a local directory (see below). */
@@ -79,13 +82,14 @@ export function createV2Client(ctx: V2Context, deps: V2ClientDeps = {}): PluginC
       create: async (options) => {
         const input: Record<string, unknown> = { title: options.title }
         if (options.parentID) input["parentID"] = options.parentID
-        if (options.permission) {
-          input["permissions"] = options.permission.map((rule) => ({
-            action: rule.permission,
-            resource: rule.pattern,
-            effect: rule.action,
-          }))
-        }
+        // V1 action names predate the V2 vocabulary: bash is now shell.
+        const V1_ACTION_MAP: Record<string, string> = { bash: "shell" }
+        const permissions = options.permission?.map((rule) => ({
+          action: V1_ACTION_MAP[rule.permission] ?? rule.permission,
+          resource: rule.pattern,
+          effect: rule.action,
+        }))
+        if (permissions) input["permissions"] = permissions
         if (options.workspaceID ?? options.directory) {
           if (options.workspaceID?.startsWith(DIR_WORKSPACE_PREFIX)) {
             input["location"] = {
@@ -99,6 +103,13 @@ export function createV2Client(ctx: V2Context, deps: V2ClientDeps = {}): PluginC
           }
         }
         const created = await ctx.session.create(input)
+        if (permissions) {
+          // Session.create permissions lose to agent rules (last match wins
+          // and agent rules apply later), which strips team tools from
+          // read-only agents. Re-assert here: rules() evaluates after the
+          // agent's rules, restoring the tools. OQ-V2-rules.
+          await ctx.permission.rules({ sessionID: created.id, permissions })
+        }
         return { data: { id: created.id } }
       },
       promptAsync: async (options) => {

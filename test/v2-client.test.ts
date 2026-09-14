@@ -42,6 +42,12 @@ function mockCtx() {
         return { ses_busy1: { type: "running" } }
       },
     },
+    permission: {
+      rules: async (input: Record<string, unknown>) => {
+        calls.push({ domain: "permission", method: "rules", input })
+        return undefined
+      },
+    },
     worktree: {
       create: async (input: Record<string, unknown>) => {
         calls.push({ domain: "worktree", method: "create", input })
@@ -70,16 +76,30 @@ function mockGit(map: Record<string, string | null>) {
 }
 
 describe("v2-client adapter (issue #36, DRY: reuses all tool logic)", () => {
-  test("session.create maps parentID/title/permissions to V2 shape", async () => {
+  test("session.create re-asserts permissions via rules() so agent denies cannot bury them", async () => {
     const { calls, ctx } = mockCtx()
     const client = createV2Client(ctx as never)
-    const result = await client.session.create({
+    await client.session.create({
+      parentID: "ses_lead",
+      title: "alice (@build teammate)",
+      permission: [{ permission: "team_message", pattern: "*", action: "allow" }],
+    })
+    const rules = calls.find((c) => c.method === "rules")
+    expect(rules?.input).toMatchObject({
+      permissions: [{ action: "team_message", resource: "*", effect: "allow" }],
+    })
+  })
+
+  test("session.create maps parentID/title/permissions to V2 shape", async () => {
+    const { calls: calls2, ctx: ctx2 } = mockCtx()
+    const client2 = createV2Client(ctx2 as never)
+    const result = await client2.session.create({
       parentID: "ses_lead",
       title: "alice (@build teammate)",
       permission: [{ permission: "team_message", pattern: "*", action: "allow" }],
     })
     expect(result.data?.id).toBe("ses_new123")
-    expect(calls[0]?.input).toMatchObject({
+    expect(calls2[0]?.input).toMatchObject({
       title: "alice (@build teammate)",
       parentID: "ses_lead",
       permissions: [{ action: "team_message", resource: "*", effect: "allow" }],
