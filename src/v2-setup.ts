@@ -38,6 +38,21 @@ export interface V2SetupContext {
   }
 }
 
+/** Extract answer text from a V2 tool result for approval matching. */
+export function extractQuestionOutput(result?: {
+  content?: string | Array<{ type?: string; text?: string }>
+}): string {
+  const content = result?.content
+  if (typeof content === "string") return content
+  if (Array.isArray(content)) {
+    return content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text ?? "")
+      .join("\n")
+  }
+  return ""
+}
+
 /** Options for setupEnsemble. */
 export interface SetupOptions {
   /** SQLite path. Defaults to the global ensemble.db. */
@@ -114,9 +129,17 @@ export async function setupEnsemble(
       sessionID: string
       input: unknown
       status: string
+      result?: { content?: string | Array<{ type?: string; text?: string }> }
     }
     if (event.tool === "question") {
-      purgeApprovals.recordQuestionAnswer(event.sessionID, "", event.input)
+      // Feed the answer text to purge approvals (team_cleanup confirm flow).
+      // The question tool renders in every client, so this is the universal
+      // approval channel on V2 — no forms or TUI needed.
+      purgeApprovals.recordQuestionAnswer(
+        event.sessionID,
+        extractQuestionOutput(event.result),
+        event.input,
+      )
     }
     recordFromToolAfter(
       { sessionID: event.sessionID, tool: event.tool },

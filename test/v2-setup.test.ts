@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { setupEnsemble, type V2SetupContext } from "../src/v2-setup"
+import { setupEnsemble, extractQuestionOutput, type V2SetupContext } from "../src/v2-setup"
 
 /** Mock V2 setup context: hook registry + programmable event intake. */
 function mockSetupCtx() {
@@ -119,8 +119,7 @@ describe("v2-setup (issue #36)", () => {
     await handle.dispose()
   })
 
-  test("dashboard serves team state on the configured port", async () => {
-    const { ctx } = mockSetupCtx()
+  test("dashboard serves team state on the configured port", async () => {    const { ctx } = mockSetupCtx()
     const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 47999 })
     seedLeadAndMember(handle)
     const res = await fetch("http://localhost:47999/api/health")
@@ -132,5 +131,13 @@ describe("v2-setup (issue #36)", () => {
     }
     expect(teams.teams?.length).toBe(1)
     await handle.dispose()
+  })
+
+  test("extractQuestionOutput reads string and part-array results", () => {
+    expect(extractQuestionOutput({ content: "Approve purge abc123" })).toBe("Approve purge abc123")
+    expect(
+      extractQuestionOutput({ content: [{ type: "text", text: "yes" }, { type: "other" }] }),
+    ).toBe("yes")
+    expect(extractQuestionOutput(undefined)).toBe("")
   })
 })
