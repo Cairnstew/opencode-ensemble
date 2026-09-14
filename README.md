@@ -17,9 +17,9 @@ Plugin built on the public OpenCode SDK. No internal dependencies.
 
 ## Quick Start
 
-```json
+```jsonc
 {
-  "plugin": ["@hueyexe/opencode-ensemble@0.16.0"]
+  "plugins": ["@hueyexe/opencode-ensemble@0.17.0"]
 }
 ```
 
@@ -177,21 +177,23 @@ The plugin uses SQLite via the host's runtime adapter:
 
 ### 1. Add the plugin
 
-Add to your OpenCode config with a pinned version. Project-level or global.
+Add to your OpenCode config with a pinned version. Project-level or global. On OpenCode v2 the key is `plugins` (v1 used `plugin` — both work on their respective versions).
 
 **Project-level** (`opencode.json` in your project root):
 
-```json
+```jsonc
 {
-  "plugin": ["@hueyexe/opencode-ensemble@0.16.0"]
+  // OpenCode v2:
+  "plugins": ["@hueyexe/opencode-ensemble@0.17.0"]
 }
 ```
 
-**Global** (`~/.config/opencode/opencode.json`):
+**Global** (`~/.config/opencode/opencode.json`): same entry.
 
-```json
+```jsonc
 {
-  "plugin": ["@hueyexe/opencode-ensemble@0.16.0"]
+  // OpenCode v1:
+  "plugin": ["@hueyexe/opencode-ensemble@0.17.0"]
 }
 ```
 
@@ -211,7 +213,19 @@ Then restart OpenCode.
 
 Teammates work in git worktrees outside your project directory. Without this permission, OpenCode will prompt you to approve every file operation in a teammate's worktree.
 
-Add to your OpenCode config (`~/.config/opencode/opencode.json`):
+Add to your OpenCode config (`~/.config/opencode/opencode.json`).
+
+OpenCode v2 (`permissions` array):
+
+```jsonc
+{
+  "permissions": [
+    { "action": "external_directory", "resource": "~/.local/share/opencode/worktree/**", "effect": "allow" }
+  ]
+}
+```
+
+OpenCode v1 (`permission` map):
 
 ```json
 {
@@ -227,15 +241,15 @@ This is required. Without it, you'll see "Permission required — Access externa
 
 ### Local development
 
-To test a local build, point your plugin config at the built output:
+To test a local build, point your plugin config at the package directory (v2 loads the source entry; v1 uses the `server()` export from the same file):
 
-```json
+```jsonc
 {
-  "plugin": ["/path/to/opencode-ensemble/dist/index.js"]
+  "plugins": [{ "package": "/path/to/opencode-ensemble" }]
 }
 ```
 
-Build with `bun run build`, then restart OpenCode to pick up changes.
+No build step needed for local testing — but run `bun run typecheck && bun test && bun run build` before committing. Restart OpenCode (or wait for hot-reload) to pick up changes.
 
 ## Tools
 
@@ -274,17 +288,15 @@ Archived-team purge is intentionally two-step. First call `team_cleanup` with `p
 
 ## What you see in the TUI
 
-The plugin works within OpenCode's existing TUI. For deeper visibility, open the [dashboard](#dashboard) at `http://localhost:4747`.
+The plugin works within OpenCode's existing UI on every client (terminal, desktop, web): tools, approvals, messages, and the [dashboard](#dashboard) at `http://localhost:4747` all live server-side.
 
 What you get:
 
-- **Toast notifications** when teammates spawn, finish, error, shut down, or get rate-limited
-- **Working progress toasts** showing who's still active after every status change (e.g. "Working: alice, bob (2/3)")
-- **Rich tool titles** in the sidebar (e.g. "Spawned alice (build)", "Message -> bob", "Task board (3 tasks)")
-- **Session switching** via `team_view` to see any teammate's full chat log
-- **Status checks** via `team_status` for a snapshot of the whole team
-
-Teammate messages arrive in the lead's session as `[Team message from alice]: ...` blocks. They look like user messages because that's how `promptAsync` delivery works. Content is clearly labeled with the sender's name.
+- **Team state in context** — the lead's system prompt carries member statuses and task counts, so it stays aware across turns including after compaction.
+- **Teammate messages** arriving in the lead's session as labeled blocks with the sender's name.
+- **Rich tool titles** in the sidebar (e.g. "Spawned alice (build)", "Message -> bob", "Task board (3 tasks)").
+- **Status checks** via `team_status` for a snapshot of the whole team.
+- **Terminal extras** (terminal only): toast notifications and attention pings via the bundled `./tui` companion, loaded automatically with the plugin. `team_view` resolves the teammate session — switch to it with the session picker (ctrl+p).
 
 ## Architecture
 
@@ -436,7 +448,9 @@ STALL_THRESHOLD_MS=0
 
 ## Known limitations
 
-- **Teammate messages may switch the lead's agent mode.** When a teammate sends a message back to the lead via `promptAsync`, OpenCode starts a new prompt loop that can switch the lead from plan/explore mode into build mode. This is a server-level behavior that the plugin cannot override. The lead's mode will restore when you send your next message.
+- **Teammate messages may switch the lead's agent mode (v1).** When a teammate sends a message back to the lead, OpenCode can start the next prompt loop in build mode even if the lead was in plan/explore mode. Tracked upstream; the lead's mode restores when you send your next message. On v2, pass an explicit `model` on `team_spawn` so teammates never inherit the server default.
+- **No automatic session switching (v2).** `team_view` resolves the teammate session but cannot navigate to it — use the session picker (ctrl+p). Toasts are terminal-only via the bundled companion; desktop and web users get the same information in-context and on the dashboard.
+- **Per-session shell env is unavailable (v2).** The v2 shell hook carries no session ID, so `ENSEMBLE_*` variables are not injected into teammate shells. Team identity travels in prompts and tool calls instead.
 
 ## How this differs from Claude Code agent teams
 
