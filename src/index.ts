@@ -1,5 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin"
 import { Plugin as PluginV2 } from "@opencode/plugin"
+import { setupEnsemble, type V2SetupContext } from "./v2-setup"
 import { tool } from "@opencode-ai/plugin"
 import { OpencodeClient } from "@opencode-ai/sdk/v2"
 import path from "node:path"
@@ -682,8 +683,13 @@ const plugin: Plugin = async (input) => {
 export default {
   ...PluginV2.define({
     id: "ensemble",
-    async setup(_ctx) {
-      // V2 wiring (tools, hooks, events) lands in later phases of issue #36.
+    async setup(ctx) {
+      // Dual support (issue #36): V2 initializes here; the V1 server()
+      // below keeps serving V1 hosts. Tool registration lands next slice.
+      const handle = await setupEnsemble(ctx as unknown as V2SetupContext)
+      return () => {
+        void handle.dispose()
+      }
     },
   }),
   server: plugin,
