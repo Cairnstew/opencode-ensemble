@@ -5,7 +5,8 @@
  * available path and asserts outcomes from the API + ensemble.db.
  *
  * Usage:
- *   ENSEMBLE_EVAL_MODEL=opencode/muse-spark-1.3-contributor-free bun run eval:smoke
+ *   bun run eval:smoke
+ *   (override model: ENSEMBLE_EVAL_MODEL=provider/model)
  *
  * Server selection:
  *   - Default: your background `opencode` service (must have the plugin loaded).
@@ -17,9 +18,10 @@
  *   every tool call fails. team_* calls failing with "unknown tool" means
  *   the server has no plugin — fix the server, not the eval.
  *
- * Model note: opencode's free tier ROTATES. The default below is current as
- * of 2026-09-14 and will stop being free at some point. Override with
- * ENSEMBLE_EVAL_MODEL (provider/model). The script fails fast with the
+ * Model note: default is GLM 5.3 Flash on Cloudflare Workers AI
+ * (cloudflare-workers-ai/@cf/zai-org/glm-5.3-flash). Override with
+ * ENSEMBLE_EVAL_MODEL (provider/model — the model segment may itself
+ * contain slashes, e.g. @cf/... IDs). The script fails fast with the
  * provider error if the model is gone — pick a replacement and re-run.
  *
  * What it proves (each asserts, any failure exits non-zero):
@@ -36,7 +38,7 @@
 import { $ } from "bun"
 import path from "node:path"
 
-const MODEL = process.env.ENSEMBLE_EVAL_MODEL ?? "opencode/muse-spark-1.3-contributor-free"
+const MODEL = process.env.ENSEMBLE_EVAL_MODEL ?? "cloudflare-workers-ai/@cf/zai-org/glm-5.3-flash"
 const TEAM = `eval-${Date.now().toString(36)}`
 const MEMBER = "eval-prober"
 const REPORT = `EVAL-REPORT-${Date.now().toString(36)}`
@@ -122,7 +124,11 @@ function check(name: string, cond: boolean, detail = ""): void {
   }
 }
 
-const [providerID, modelID] = MODEL.split("/")
+// Split on the FIRST slash only — model IDs may themselves contain slashes
+// (e.g. cloudflare-workers-ai/@cf/zai-org/glm-5.3-flash).
+const splitAt = MODEL.indexOf("/")
+const providerID = MODEL.slice(0, splitAt)
+const modelID = MODEL.slice(splitAt + 1)
 if (!providerID || !modelID) throw new Error(`ENSEMBLE_EVAL_MODEL must be provider/model, got "${MODEL}"`)
 
 // --- setup: lead session pinned to the eval model ---
