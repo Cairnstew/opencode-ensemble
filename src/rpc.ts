@@ -23,6 +23,40 @@ export const EnsembleRpc = Rpc.define({
         additionalProperties: false,
       },
     },
+    teamContext: {
+      input: {
+        type: "object",
+        properties: { sessionID: { type: "string" } },
+        required: ["sessionID"],
+        additionalProperties: false,
+      },
+      output: {
+        type: "object",
+        properties: {
+          team: { type: ["string", "null"] },
+          members: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { name: { type: "string" }, status: { type: "string" } },
+              required: ["name", "status"],
+              additionalProperties: false,
+            },
+          },
+          tasks: {
+            type: "object",
+            properties: {
+              pending: { type: "number" },
+              done: { type: "number" },
+            },
+            required: ["pending", "done"],
+            additionalProperties: false,
+          },
+        },
+        required: ["team", "members", "tasks"],
+        additionalProperties: false,
+      },
+    },
   },
   events: {
     member: {

@@ -186,6 +186,25 @@ export async function setupEnsemble(
         const summary = members.map((m) => `${m.name}: ${m.status}`).join(", ")
         return { text: `Team "${team}" (${row.status}): ${summary || "no members"}` }
       },
+      teamContext: async (input) => {
+        const sessionID = (input as { sessionID?: string }).sessionID ?? ""
+        const teamInfo = findTeamBySession(db, registry, sessionID)
+        if (!teamInfo) return { team: null, members: [], tasks: { pending: 0, done: 0 } }
+        const members = db.query("SELECT name, status FROM team_member WHERE team_id = ?").all(
+          teamInfo.teamId,
+        ) as Array<{ name: string; status: string }>
+        const pending = (
+          db.query("SELECT COUNT(*) as c FROM team_task WHERE team_id = ? AND status != 'completed'").get(
+            teamInfo.teamId,
+          ) as { c: number }
+        ).c
+        const done = (
+          db.query("SELECT COUNT(*) as c FROM team_task WHERE team_id = ? AND status = 'completed'").get(
+            teamInfo.teamId,
+          ) as { c: number }
+        ).c
+        return { team: teamInfo.teamName, members, tasks: { pending, done } }
+      },
     })
   } catch (err) {
     vlog(`init:rpc:failed err=${err instanceof Error ? err.message : String(err)}`)
