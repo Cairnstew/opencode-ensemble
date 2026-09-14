@@ -39,6 +39,22 @@ describe("team_spawn", () => {
     expect(promptCalls).toHaveLength(1)
   })
 
+  test("grants every teammate Code Mode access (execute allow) so read-only agents can reach team tools", async () => {
+    await executeTeamSpawn(deps, {
+      name: "scout",
+      agent: "explore",
+      prompt: "Map the codebase",
+    }, "lead-sess")
+    const createCalls = deps.client.calls.filter(c => c.method === "session.create")
+    const permission = (createCalls[0]?.args[0] as { permission?: Array<{
+      permission: string
+      pattern: string
+      action: string
+    }> })?.permission
+    expect(permission).toContainEqual({ permission: "execute", pattern: "*", action: "allow" })
+    expect(permission).toContainEqual({ permission: "team_message", pattern: "*", action: "allow" })
+  })
+
   test("agent: null defaults to 'build' instead of hitting the NOT NULL constraint (issue #28)", async () => {
     const result = await executeTeamSpawn(deps, {
       name: "alice",
@@ -777,6 +793,7 @@ describe("team_spawn — agent mode enforcement", () => {
     { permission: "team_tasks_add", pattern: "*", action: "allow" },
     { permission: "team_tasks_complete", pattern: "*", action: "allow" },
     { permission: "team_claim", pattern: "*", action: "allow" },
+    { permission: "execute", pattern: "*", action: "allow" },
   ]
 
   test("plan agent gets deny rules + team tool allow (no worktree) on session.create", async () => {

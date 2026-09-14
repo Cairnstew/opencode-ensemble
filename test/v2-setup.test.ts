@@ -118,6 +118,11 @@ describe("v2-setup (issue #36)", () => {
     await contextHook?.(event as never)
     expect(event.system.length).toBe(1)
     expect(event.system[0]?.text).toContain("alpha")
+    // Member sessions get the Code Mode invocation hint; leads do not.
+    const memberEvent = { sessionID: "ses_alice", system: [] as Array<{ type: string; text: string }> }
+    await contextHook?.(memberEvent as never)
+    expect(memberEvent.system.length).toBe(2)
+    expect(memberEvent.system[1]?.text).toContain("execute")
     await handle.dispose()
   })
 

@@ -170,6 +170,12 @@ export async function executeTeamSpawn(
     ...TEAM_TOOLS.map(t => ({ permission: t, pattern: "*", action: "allow" as const })),
   )
 
+  // Code Mode is the invocation path for plugin tools on V2 — without this,
+  // read-only agents (deny-all policies like explore's) cannot reach any
+  // team tool. Safe: nested calls inside execute still enforce their own
+  // permissions, so explore stays read-only.
+  permission.push({ permission: "execute", pattern: "*", action: "allow" })
+
   // Create child session — bind to workspace if available (server-enforced CWD isolation).
   // Falls back to no workspace binding if workspace.create failed.
   let childSessionId: string | undefined

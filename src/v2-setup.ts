@@ -284,6 +284,16 @@ export async function setupEnsemble(
         : buildTeammateSystemPrompt(db, teamInfo.teamId, teamInfo.memberName ?? "unknown")
     vlog(`system-prompt:injected role=${teamInfo.role} len=${prompt.length}`)
     event.system.push({ type: "text", text: prompt })
+    if (teamInfo.role === "member") {
+      // V2 invokes plugin tools through Code Mode, not direct calls —
+      // without this hint teammates attempt direct calls that the runtime
+      // rejects with "No tool named team_message is currently available"
+      // (seen live 2026-09-14: explore scout denied twice, gave up).
+      event.system.push({
+        type: "text",
+        text: 'Ensemble tools on this platform are called through the execute tool, e.g. tools.team_message({ to: "lead", text: "..." }). Do not call them directly.',
+      })
+    }
   })
 
   await ctx.session.hook("compaction", (raw) => {
