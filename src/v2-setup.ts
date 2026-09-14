@@ -4,6 +4,10 @@ import type { MemberRegistry, DescendantTracker } from "./state"
 import { MemberRegistry as MemberRegistryImpl, DescendantTracker as DescendantTrackerImpl, PendingPurgeApprovals } from "./state"
 import { dispatchV2Event, type V2EventLike } from "./v2-events"
 import type { V2Context } from "./v2-client"
+import { createV2Client } from "./v2-client"
+import { registerV2Tools } from "./v2-tools"
+import type { ToolDeps } from "./types"
+import { ProgressTracker } from "./progress"
 import { checkToolIsolation } from "./hooks"
 import { findTeamBySession } from "./types"
 import { loadConfig } from "./config"
@@ -64,6 +68,7 @@ export async function setupEnsemble(
   const tracker: DescendantTracker = new DescendantTrackerImpl()
   const purgeApprovals = new PendingPurgeApprovals()
   const activityBuffer = new ActivityBuffer()
+  const progressTracker = new ProgressTracker()
   const rateLimiter = new TokenBucket({
     capacity: config.rateLimitCapacity,
     refillRate: 2,
@@ -149,6 +154,19 @@ export async function setupEnsemble(
   // ENSEMBLE_* env cannot be scoped. Registered as a placeholder until the
   // API gains session scope — team tools and prompts carry identity instead.
   await ctx.shell.hook("create.before", () => undefined)
+
+  const client = createV2Client(ctx)
+  const deps: ToolDeps = {
+    db,
+    registry,
+    tracker,
+    purgeApprovals,
+    client,
+    directory: ctx.location.directory,
+    config,
+    progressTracker,
+  }
+  await registerV2Tools(ctx.tool, deps)
 
   return {
     db,
