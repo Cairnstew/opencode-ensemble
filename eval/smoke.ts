@@ -127,11 +127,14 @@ if (!providerID || !modelID) throw new Error(`ENSEMBLE_EVAL_MODEL must be provid
 
 // --- setup: lead session pinned to the eval model ---
 console.log(`model=${MODEL} team=${TEAM}`)
-// Session location = this repo root (derived, no hardcoded paths).
-const REPO_ROOT = path.resolve(import.meta.dir, "..")
+// Session location = where the plugin under test is ACTIVE. Defaults to the
+// repo root (correct for a properly installed plugin); override when the
+// plugin is loaded from a scratch location, e.g.
+// ENSEMBLE_EVAL_DIRECTORY=/tmp/opencode/verify
+const EVAL_DIR = process.env.ENSEMBLE_EVAL_DIRECTORY ?? path.resolve(import.meta.dir, "..")
 const lead = (await api("post", "/api/session", {
   title: `ensemble-eval-${TEAM}`,
-  location: { directory: REPO_ROOT },
+  location: { directory: EVAL_DIR },
   // No file/shell access: the agent must use team tools (a prior run read
   // tool source and wrote SQL directly instead of calling the tools).
   permissions: ["shell", "read", "edit", "write", "glob", "grep"].map((action) => ({
