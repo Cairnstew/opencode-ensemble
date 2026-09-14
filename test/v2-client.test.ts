@@ -38,8 +38,31 @@ function mockCtx() {
         return { ses_busy1: { type: "running" } }
       },
     },
+    worktree: {
+      create: async (input: Record<string, unknown>) => {
+        calls.push({ domain: "worktree", method: "create", input })
+        return { directory: "/wt/ensemble-proj-team-alice" }
+      },
+      remove: async (input: Record<string, unknown>) => {
+        calls.push({ domain: "worktree", method: "remove", input })
+        return undefined
+      },
+      list: async () => {
+        calls.push({ domain: "worktree", method: "list", input: {} })
+        return [{ directory: "/wt/ensemble-proj-team-alice" }, { directory: "/wt/other" }]
+      },
+      refresh: async () => {
+        calls.push({ domain: "worktree", method: "refresh", input: {} })
+        return undefined
+      },
+    },
   }
   return { calls, ctx }
+}
+
+/** Fake git branch lookup: dir → branch. */
+function mockGit(map: Record<string, string | null>) {
+  return async (directory: string) => map[directory] ?? null
 }
 
 describe("v2-client adapter (issue #36, DRY: reuses all tool logic)", () => {
@@ -100,6 +123,63 @@ describe("v2-client adapter (issue #36, DRY: reuses all tool logic)", () => {
     const client = createV2Client(ctx as never)
     await client.tui.showToast({ title: "Team", message: "hi" })
     await client.tui.selectSession({ sessionID: "ses_child" })
+    expect(calls.length).toBe(0)
+  })
+
+  test("worktree.create discovers the branch via git (V2 reports directory only)", async () => {
+    const { calls, ctx } = mockCtx()
+    const client = createV2Client(ctx as never, {
+      gitBranch: mockGit({ "/wt/ensemble-proj-team-alice": "ensemble-proj-team-alice" }),
+    })
+    const result = await client.worktree.create({ worktreeCreateInput: { name: "ensemble-proj-team-alice" } })
+    expect(calls[0]?.input).toMatchObject({ name: "ensemble-proj-team-alice" })
+    expect(result.data).toMatchObject({
+      name: "ensemble-proj-team-alice",
+      branch: "ensemble-proj-team-alice",
+      directory: "/wt/ensemble-proj-team-alice",
+    })
+  })
+
+  test("worktree.create falls back to the requested name when git lookup fails", async () => {
+    const { ctx } = mockCtx()
+    const client = createV2Client(ctx as never, { gitBranch: mockGit({}) })
+    const result = await client.worktree.create({ worktreeCreateInput: { name: "ensemble-x" } })
+    expect(result.data?.branch).toBe("ensemble-x")
+  })
+
+  test("worktree.remove/list/reset map to V2 remove/list/refresh", async () => {
+    const { calls, ctx } = mockCtx()
+    const client = createV2Client(ctx as never)
+    await client.worktree.remove({ worktreeRemoveInput: { directory: "/wt/ensemble-x" } })
+    expect(calls[0]?.input).toMatchObject({ directory: "/wt/ensemble-x", force: false })
+    const list = await client.worktree.list()
+    expect(list.data?.[0]).toMatchObject({ directory: "/wt/ensemble-proj-team-alice" })
+    await client.worktree.reset({ worktreeResetInput: { directory: "/wt/ensemble-x" } })
+    expect(calls[calls.length - 1]).toMatchObject({ domain: "worktree", method: "refresh" })
+  })
+
+  test("session.create routes a v2dir workspace id to location.directory", async () => {
+    const { calls, ctx } = mockCtx()
+    const client = createV2Client(ctx as never)
+    await client.session.create({ title: "t", workspaceID: "v2dir:/wt/ensemble-x" })
+    expect(calls[0]?.input).toMatchObject({ location: { directory: "/wt/ensemble-x" } })
+  })
+
+  test("workspace.create bridges branch to directory (no workspace domain on V2 ctx)", async () => {
+    const { ctx } = mockCtx()
+    const client = createV2Client(ctx as never, {
+      gitDir: async (_branch: string) => "/wt/ensemble-x",
+    })
+    const result = await client.workspace.create({ branch: "ensemble-x" })
+    expect(result.data?.id).toBe("v2dir:/wt/ensemble-x")
+  })
+
+  test("workspace.list is empty and workspace.remove resolves (DB is the source of truth)", async () => {
+    const { calls, ctx } = mockCtx()
+    const client = createV2Client(ctx as never)
+    const list = await client.workspace.list()
+    expect(list.data).toEqual([])
+    await client.workspace.remove({ id: "v2dir:/wt/ensemble-x" })
     expect(calls.length).toBe(0)
   })
 })

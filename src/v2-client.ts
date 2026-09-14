@@ -1,4 +1,5 @@
 import type { PluginClient } from "./types"
+import { runCommand } from "./process"
 
 /** V2 plugin context subset Ensemble needs (structural, mock-friendly). */
 export interface V2Context {
@@ -10,6 +11,34 @@ export interface V2Context {
     get(input: Record<string, unknown>): Promise<unknown>
     context(input: Record<string, unknown>): Promise<unknown[]>
     active(): Promise<Record<string, { type: string }>>
+  }
+  worktree: {
+    create(input: Record<string, unknown>): Promise<{ directory: string }>
+    remove(input: Record<string, unknown>): Promise<unknown>
+    list(): Promise<Array<{ directory: string }>>
+    refresh(): Promise<unknown>
+  }
+}
+
+/** Prefix marking a workspace id that is really a local directory (see below). */
+const DIR_WORKSPACE_PREFIX = "v2dir:"
+
+/** Injectable shell lookups (default to git; overridden in tests). */
+export interface V2ClientDeps {
+  /** Current branch checked out in a directory, or null when unknown. */
+  gitBranch?: (directory: string) => Promise<string | null>
+  /** Worktree directory currently on a branch, or null when none. */
+  gitDir?: (branch: string) => Promise<string | null>
+}
+
+/** Current branch in a directory via git. */
+async function gitBranchDefault(directory: string): Promise<string | null> {
+  try {
+    const result = await runCommand(["git", "branch", "--show-current"], { cwd: directory })
+    const branch = result.stdout.trim()
+    return result.exitCode === 0 && branch ? branch : null
+  } catch {
+    return null
   }
 }
 
@@ -29,8 +58,21 @@ export interface V2Context {
  *   states here, extend the mapping.
  * - tui.*: no-op. Toasts and session-select move to the CLI (`./tui`) plugin
  *   in a later phase — the server plugin must not depend on a TUI.
+ * - worktree.create: V2 reports only the directory, so the branch is read
+ *   back via git (falls back to the requested name). OQ-V2-branch.
+ * - worktree.list: V2 entries carry directory only; name is the basename
+ *   (recovery filters on the `ensemble-` prefix — a non-matching dir is
+ *   skipped, never wrongly deleted). reset has no production callers and
+ *   maps to refresh. OQ-V2-wtname.
+ * - workspace.*: V2 ctx has no workspace domain (workspaces are
+ *   provider-based). create bridges a branch to its worktree directory and
+ *   returns a `v2dir:<dir>` id; session.create routes that id to
+ *   location.directory, preserving worktree isolation with zero tool
+ *   changes. list returns [] and remove resolves — the DB workspace_id
+ *   column stays the source of truth and is still nulled by cleanup.
  */
-export function createV2Client(ctx: V2Context): PluginClient {
+export function createV2Client(ctx: V2Context, deps: V2ClientDeps = {}): PluginClient {
+  const gitBranch = deps.gitBranch ?? gitBranchDefault
   return {
     session: {
       create: async (options) => {
@@ -44,9 +86,15 @@ export function createV2Client(ctx: V2Context): PluginClient {
           }))
         }
         if (options.workspaceID ?? options.directory) {
-          input["location"] = {
-            ...(options.directory ? { directory: options.directory } : {}),
-            ...(options.workspaceID ? { workspaceID: options.workspaceID } : {}),
+          if (options.workspaceID?.startsWith(DIR_WORKSPACE_PREFIX)) {
+            input["location"] = {
+              directory: options.workspaceID.slice(DIR_WORKSPACE_PREFIX.length),
+            }
+          } else {
+            input["location"] = {
+              ...(options.directory ? { directory: options.directory } : {}),
+              ...(options.workspaceID ? { workspaceID: options.workspaceID } : {}),
+            }
           }
         }
         const created = await ctx.session.create(input)
@@ -83,27 +131,53 @@ export function createV2Client(ctx: V2Context): PluginClient {
       selectSession: async () => undefined,
     },
     worktree: {
-      create: async () => {
-        throw new Error("worktree.create lands with the worktree slice (issue #36 phase 3)")
+      create: async (options) => {
+        const name = (options.worktreeCreateInput as { name?: string } | undefined)?.name ?? "ensemble-worktree"
+        const created = await ctx.worktree.create({ name })
+        const branch = (await gitBranch(created.directory)) ?? name
+        return { data: { name, branch, directory: created.directory } }
       },
-      remove: async () => {
-        throw new Error("worktree.remove lands with the worktree slice (issue #36 phase 3)")
+      remove: async (options) => {
+        const directory = (options.worktreeRemoveInput as { directory: string }).directory
+        return ctx.worktree.remove({ directory, force: false })
       },
       list: async () => {
-        throw new Error("worktree.list lands with the worktree slice (issue #36 phase 3)")
+        const entries = await ctx.worktree.list()
+        return {
+          data: entries.map((entry) => ({
+            name: entry.directory.split("/").pop() ?? entry.directory,
+            branch: "",
+            directory: entry.directory,
+          })),
+        }
       },
-      reset: async () => {
-        throw new Error("worktree.reset lands with the worktree slice (issue #36 phase 3)")
-      },
+      reset: async () => ctx.worktree.refresh(),
     },
     workspace: {
-      create: async () => {
-        throw new Error("workspace.create lands with the worktree slice (issue #36 phase 3)")
+      create: async (options) => {
+        const branch = (options as { branch?: string }).branch ?? ""
+        const directory = await deps.gitDir?.(branch)
+        if (!directory) throw new Error(`V2 workspace bridge: no worktree found on branch "${branch}"`)
+        return {
+          data: {
+            id: `${DIR_WORKSPACE_PREFIX}${directory}`,
+            type: "local",
+            branch,
+            directory,
+            projectID: "",
+          },
+        }
       },
       remove: async () => undefined,
-      list: async () => {
-        throw new Error("workspace.list lands with the worktree slice (issue #36 phase 3)")
-      },
+      list: async () => ({
+        data: [] as Array<{
+          id: string
+          type: string
+          branch: string | null
+          directory: string | null
+          projectID: string
+        }>,
+      }),
     },
   } as PluginClient
 }
