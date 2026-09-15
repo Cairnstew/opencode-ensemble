@@ -793,6 +793,9 @@ describe("team_spawn — agent mode enforcement", () => {
     { permission: "team_tasks_add", pattern: "*", action: "allow" },
     { permission: "team_tasks_complete", pattern: "*", action: "allow" },
     { permission: "team_claim", pattern: "*", action: "allow" },
+    { permission: "team_results", pattern: "*", action: "allow" },
+    { permission: "team_status", pattern: "*", action: "allow" },
+    { permission: "team_view", pattern: "*", action: "allow" },
     { permission: "execute", pattern: "*", action: "allow" },
   ]
 

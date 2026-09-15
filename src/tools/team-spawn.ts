@@ -147,7 +147,21 @@ export async function executeTeamSpawn(
   // Permission rules on session.create are the hard gate (server-enforced).
   // For read-only agents, deny write tools and explicitly allow team tools.
   // For all agents with worktrees, allowlist the worktree path for edit/bash.
-  const TEAM_TOOLS = ["team_message", "team_broadcast", "team_tasks_list", "team_tasks_add", "team_tasks_complete", "team_claim"] as const
+  // The 9 member-accessible tools per the documented tool table: the 6 worker
+  // tools plus the 3 inspection tools (team_results/team_status/team_view —
+  // any member). Caught live 2026-09-15: teammates could not read each
+  // other's messages because team_results was missing from this list.
+  const TEAM_TOOLS = [
+    "team_message",
+    "team_broadcast",
+    "team_tasks_list",
+    "team_tasks_add",
+    "team_tasks_complete",
+    "team_claim",
+    "team_results",
+    "team_status",
+    "team_view",
+  ] as const
   const permission: PermissionRule[] = []
 
   if (worktreeDir) {
