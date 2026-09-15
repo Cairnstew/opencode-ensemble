@@ -84,5 +84,16 @@ export const EnsembleRpc = Rpc.define({
         additionalProperties: false,
       },
     },
+    view: {
+      schema: {
+        type: "object",
+        properties: {
+          sessionID: { type: "string" },
+          memberName: { type: "string" },
+        },
+        required: ["sessionID"],
+        additionalProperties: false,
+      },
+    },
   },
 })

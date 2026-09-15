@@ -4,7 +4,7 @@ import { EnsembleRpc, emitMemberEvent, emitNoticeEvent } from "../src/v2-rpc"
 describe("v2-rpc bridge (issue #36)", () => {
   test("contract carries the ensemble id, events, and methods", () => {
     expect(EnsembleRpc.id).toBe("ensemble")
-    expect(Object.keys(EnsembleRpc.events ?? {}).sort()).toEqual(["member", "notice"])
+    expect(Object.keys(EnsembleRpc.events ?? {}).sort()).toEqual(["member", "notice", "view"])
     expect(Object.keys(EnsembleRpc.methods ?? {}).sort()).toEqual(["summary", "teamContext"])
   })
 

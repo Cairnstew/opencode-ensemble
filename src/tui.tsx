@@ -91,6 +91,18 @@ export default Plugin.define({
       }
     })
 
+    // Native agent switching: team_view in the lead session emits "view";
+    // the companion navigates the TUI to the teammate session (ctrl+p to return).
+    const offView = rpc.events.on("view", (event) => {
+      const data = event.data as unknown as { sessionID: string }
+      if (!data.sessionID) return
+      if (context.ui.tabs.enabled()) {
+        void context.ui.tabs.focus(data.sessionID)
+      } else {
+        void context.ui.router.navigate({ type: "session", sessionID: data.sessionID })
+      }
+    })
+
     const onEvent = (cb: () => void): (() => void) => rpc.events.on("member", cb)
 
     const offSidebar = context.ui.slot({
@@ -109,6 +121,7 @@ export default Plugin.define({
     return () => {
       offNotice()
       offMember()
+      offView()
       offSidebar()
     }
   },

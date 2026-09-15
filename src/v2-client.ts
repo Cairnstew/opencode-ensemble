@@ -34,6 +34,8 @@ export interface V2ClientDeps {
   gitBranch?: (directory: string) => Promise<string | null>
   /** Worktree directory currently on a branch, or null when none. */
   gitDir?: (branch: string) => Promise<string | null>
+  /** RPC emitter for companion events (team_view navigation). */
+  rpcEmitter?: { events: { emit(name: string, data: unknown): Promise<unknown> } }
 }
 
 /** Current branch in a directory via git. */
@@ -160,7 +162,17 @@ export function createV2Client(ctx: V2Context, deps: V2ClientDeps = {}): PluginC
     },
     tui: {
       showToast: async () => undefined,
-      selectSession: async () => undefined,
+      selectSession: async (options) => {
+        // Native agent switching on V2: shared team_view calls this, the
+        // companion receives the event and navigates the TUI to the
+        // teammate session. No server-side TUI API exists on V2.
+        if (deps.rpcEmitter) {
+          await deps.rpcEmitter.events.emit("view", { sessionID: options.sessionID }).catch(() => {
+            // Companion optional — never fail team_view for it.
+          })
+        }
+        return undefined
+      },
     },
     worktree: {
       create: async (options) => {

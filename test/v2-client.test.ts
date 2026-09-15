@@ -188,6 +188,22 @@ describe("v2-client adapter (issue #36, DRY: reuses all tool logic)", () => {
     expect(calls.length).toBe(0)
   })
 
+  test("tui.selectSession emits the view RPC event for native navigation", async () => {
+    const emitted: Array<{ name: string; data: unknown }> = []
+    const { ctx } = mockCtx()
+    const client = createV2Client(ctx as never, {
+      rpcEmitter: {
+        events: {
+          emit: async (name: string, data: unknown) => {
+            emitted.push({ name, data })
+          },
+        },
+      },
+    })
+    await client.tui.selectSession({ sessionID: "ses_child" })
+    expect(emitted).toEqual([{ name: "view", data: { sessionID: "ses_child" } }])
+  })
+
   test("worktree.create discovers the branch via git (V2 reports directory only)", async () => {
     const { calls, ctx } = mockCtx()
     const client = createV2Client(ctx as never, {

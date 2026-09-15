@@ -313,7 +313,7 @@ export async function setupEnsemble(
   // API gains session scope — team tools and prompts carry identity instead.
   await ctx.shell.hook("create.before", () => undefined)
 
-  const client = createV2Client(ctx)
+  const client = createV2Client(ctx, rpc ? { rpcEmitter: rpc } : {})
   const deps: ToolDeps = {
     db,
     registry,
