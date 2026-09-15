@@ -25,6 +25,10 @@ function TeamSidebar(props: { fetchContext: () => Promise<TeamContextData | null
     void load()
     const off = props.onEvent(() => void load())
     onCleanup(off)
+    // Heartbeat: events alone go stale (cleanup emits nothing, events can be
+    // missed across reconnects). Re-fetch on a slow tick — local RPC read.
+    const tick = setInterval(() => void load(), 10_000)
+    onCleanup(() => clearInterval(tick))
   })
   return (
     <Show when={state()?.team} fallback={<text>Ensemble: no active team</text>}>
