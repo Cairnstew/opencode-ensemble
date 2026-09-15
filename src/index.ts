@@ -658,10 +658,11 @@ const plugin: Plugin = async (input) => {
       }),
 
       team_view: tool({
-        description: "Navigate the TUI to a teammate's session so you can see what they are doing. " +
-          "Use the session picker (ctrl+p) to return to the lead session.",
+        description: "Resolve a teammate's session so the user can inspect it. Default reports the session ID + status without switching. " +
+          "Pass navigate: true ONLY when the user explicitly asked to view the teammate's session — it switches their client to it. Return via the session picker (ctrl+p).",
         args: {
           member: tool.schema.string().describe("Teammate name to view"),
+          navigate: tool.schema.boolean().default(false).describe("Switch the user's client to this session. Only when the user explicitly asked."),
         },
         async execute(args, ctx) {
           const result = await executeTeamView(deps, args, ctx.sessionID)

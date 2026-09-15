@@ -12,9 +12,18 @@ describe("team_view", () => {
     deps.registry.register("t1", "alice", "sess-alice")
   })
 
-  test("calls selectSession with the member's session ID", async () => {
+  test("default does NOT navigate — reports session info only", async () => {
     const result = await executeTeamView(deps, { member: "alice" }, "lead-sess")
-    expect(result).toBe("Switched to alice's session.")
+    expect(result).toContain("sess-alice")
+    expect(result).toContain("session picker")
+
+    const selectCalls = deps.client.calls.filter(c => c.method === "tui.selectSession")
+    expect(selectCalls).toHaveLength(0)
+  })
+
+  test("navigate: true calls selectSession with the member's session ID", async () => {
+    const result = await executeTeamView(deps, { member: "alice", navigate: true }, "lead-sess")
+    expect(result).toContain("Switched to alice's session.")
 
     const selectCalls = deps.client.calls.filter(c => c.method === "tui.selectSession")
     expect(selectCalls).toHaveLength(1)
@@ -31,18 +40,19 @@ describe("team_view", () => {
       .rejects.toThrow("not found")
   })
 
-  test("works for teammates viewing other teammates", async () => {
+  test("teammates resolve other teammates without navigating by default", async () => {
     insertMember(deps.db, "t1", "bob", "sess-bob", "ready", "idle")
     deps.registry.register("t1", "bob", "sess-bob")
 
     const result = await executeTeamView(deps, { member: "alice" }, "sess-bob")
-    expect(result).toBe("Switched to alice's session.")
+    expect(result).toContain("sess-alice")
+    expect(deps.client.calls.filter(c => c.method === "tui.selectSession")).toHaveLength(0)
   })
 
-  test("returns fallback message when selectSession fails", async () => {
+  test("returns fallback message when selectSession fails with navigate", async () => {
     deps.client.tui.selectSession = async () => { throw new Error("not supported") }
 
-    const result = await executeTeamView(deps, { member: "alice" }, "lead-sess")
+    const result = await executeTeamView(deps, { member: "alice", navigate: true }, "lead-sess")
     expect(result).toContain("Could not switch")
     expect(result).toContain("alice")
   })

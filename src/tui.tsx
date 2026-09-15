@@ -4,13 +4,6 @@ import { createSignal, onCleanup, onMount, Show } from "solid-js"
 import { Plugin } from "@opencode/plugin/tui"
 import { EnsembleRpc } from "./rpc"
 
-/** Notice payload shape from the server bridge. */
-interface NoticeData {
-  title?: string
-  message: string
-  variant?: "info" | "success" | "warning" | "error"
-}
-
 /** Team context shape from the server bridge. */
 interface TeamContextData {
   team: string | null
@@ -53,45 +46,23 @@ function TeamSidebar(props: { fetchContext: () => Promise<TeamContextData | null
 /**
  * Terminal companion for opencode-ensemble (issue #36).
  *
- * Toasts + attention pings on server events, plus a sidebar widget and a
- * session panel showing live team state. Enhancement only: desktop, web,
- * and companion-less terminals lose nothing functional — tools, approvals,
- * model-context messages, and the dashboard all live server-side.
+ * Two persistent surfaces only — transient toasts were removed as noise
+ * (live state lives in the sidebar; events live in the transcript as
+ * synthetic system lines):
+ *   1. Sidebar widget: live member status + task counts.
+ *   2. Native agent switching: team_view with navigate: true (user opt-in
+ *      only — agents never hijack the client unprompted).
+ *
+ * Enhancement only: desktop, web, and companion-less terminals lose nothing
+ * functional — tools, approvals, model-context messages, and the dashboard
+ * all live server-side.
  */
 export default Plugin.define({
   id: "ensemble.tui",
   setup(context) {
     const rpc = context.client.rpc(EnsembleRpc)
 
-    const offNotice = rpc.events.on("notice", (event) => {
-      const data = event.data as unknown as NoticeData
-      void context.ui.toast.show({
-        title: data.title ?? "Team",
-        message: data.message,
-        variant: data.variant ?? "info",
-        duration: 5000,
-      })
-      void context.attention.notify({
-        title: data.title ?? "Ensemble",
-        message: data.message,
-        notification: { when: "blurred" },
-        sound: { name: data.variant === "error" ? "error" : "done", volume: 0.4, when: "always" },
-      })
-    })
-
-    const offMember = rpc.events.on("member", (event) => {
-      const data = event.data as unknown as { memberName: string; from: string; to: string }
-      if (data.to === "error") {
-        void context.ui.toast.show({
-          title: "Team",
-          message: `${data.memberName} errored`,
-          variant: "error",
-          duration: 8000,
-        })
-      }
-    })
-
-    // Native agent switching: team_view in the lead session emits "view";
+    // Native agent switching: team_view(navigate: true) emits "view";
     // the companion navigates the TUI to the teammate session (ctrl+p to return).
     const offView = rpc.events.on("view", (event) => {
       const data = event.data as unknown as { sessionID: string }
@@ -119,8 +90,6 @@ export default Plugin.define({
     })
 
     return () => {
-      offNotice()
-      offMember()
       offView()
       offSidebar()
     }

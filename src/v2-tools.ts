@@ -332,10 +332,14 @@ export async function registerV2Tools(domain: V2ToolDomain, deps: ToolDeps): Pro
     editor.add({
       name: "team_view",
       description:
-        "Navigate the TUI to a teammate's session so you can see what they are doing. On V2 this resolves the session without navigating (no server-side TUI select).",
+        "Resolve a teammate's session so the user can inspect it. Default reports the session ID + status without switching. " +
+        "navigate: true switches the user's client — ONLY when the user explicitly asked to view the teammate's session.",
       input: {
         type: "object",
-        properties: { member: str("Teammate name to view") },
+        properties: {
+          member: str("Teammate name to view"),
+          navigate: bool("Switch the user's client to this session. Only when the user explicitly asked.", false),
+        },
         required: ["member"],
         additionalProperties: false,
       },
