@@ -17,13 +17,13 @@ Plugin built on the public OpenCode SDK. No internal dependencies.
 
 ## Quick Start
 
-```jsonc
-{
-  "plugins": ["@hueyexe/opencode-ensemble@0.18.0"]
-}
+Install the plugin and you're done:
+
+```sh
+opencode plugin add @hueyexe/opencode-ensemble@0.18.0
 ```
 
-Add to your `opencode.json`, restart OpenCode, and ask it to do something that benefits from parallel work. The agent handles the rest. See [Install](#install) for full setup including worktree permissions.
+Then restart OpenCode and ask it to do something that benefits from parallel work. The agent handles the rest. See [Install](#install) for worktree permissions and other options.
 
 ## What actually happens
 
@@ -177,7 +177,15 @@ The plugin uses SQLite via the host's runtime adapter:
 
 ### 1. Add the plugin
 
-Add to your OpenCode config with a pinned version. Project-level or global. On OpenCode v2 the key is `plugins` (v1 used `plugin` — both work on their respective versions).
+The simplest install is the CLI (npm registry or Git package specifiers both work):
+
+```sh
+opencode plugin add @hueyexe/opencode-ensemble@0.18.0
+```
+
+This installs globally and writes the config entry for you. To update later: `opencode plugin update @hueyexe/opencode-ensemble`.
+
+**Manual config** — add to your OpenCode config with a pinned version. Project-level or global.
 
 **Project-level** (`opencode.json` in your project root):
 
@@ -241,7 +249,7 @@ This is required. Without it, you'll see "Permission required — Access externa
 
 ### Local development
 
-To test a local build, point your plugin config at the package directory (v2 loads the source entry; v1 uses the `server()` export from the same file):
+Configure the worktree as a local plugin (v2 loads the source entry; v1 uses the `server()` export from the same file):
 
 ```jsonc
 {
