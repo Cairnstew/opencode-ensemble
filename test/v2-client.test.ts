@@ -13,6 +13,10 @@ function mockCtx() {
         sessions[id] = { id }
         return { id }
       },
+      synthetic: async (input: Record<string, unknown>) => {
+        calls.push({ domain: "session", method: "synthetic", input })
+        return { id: "syn_1" }
+      },
       prompt: async (input: Record<string, unknown>) => {
         calls.push({ domain: "session", method: "prompt", input })
         return { id: "msg_1" }
@@ -103,6 +107,21 @@ describe("v2-client adapter (issue #36, DRY: reuses all tool logic)", () => {
       title: "alice (@build teammate)",
       parentID: "ses_lead",
       permissions: [{ action: "team_message", resource: "*", effect: "allow" }],
+    })
+  })
+
+  test("session.promptAsync maps synthetic wakes to session.synthetic", async () => {
+    const { calls, ctx } = mockCtx()
+    const client = createV2Client(ctx as never)
+    await client.session.promptAsync({
+      sessionID: "ses_child",
+      parts: [{ type: "text", text: "[System: New team message from scout]" }],
+      synthetic: true,
+    })
+    expect(calls[0]).toMatchObject({
+      domain: "session",
+      method: "synthetic",
+      input: { sessionID: "ses_child", delivery: "queue" },
     })
   })
 

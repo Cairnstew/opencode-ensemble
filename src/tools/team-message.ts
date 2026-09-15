@@ -125,6 +125,7 @@ export async function executeTeamMessage(
     deps.client.session.promptAsync({
       sessionID: recipientSessionId,
       parts: [{ type: "text", text: `[System: New team message from ${senderName}]` }],
+      synthetic: true,
     }).catch((err) => {
       log(`team_message:wake-lead:failed from=${senderName} err=${err instanceof Error ? err.message : String(err)}`)
     })

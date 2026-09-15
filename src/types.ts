@@ -50,6 +50,8 @@ export interface PluginClient {
       agent?: string
       tools?: Record<string, boolean>
       system?: string
+      /** V2: deliver as a synthetic (system) message instead of a user prompt. */
+      synthetic?: boolean
     }): Promise<unknown>
     abort(options: { sessionID: string }): Promise<unknown>
     status(): Promise<{ data?: Record<string, { type: string }> }>

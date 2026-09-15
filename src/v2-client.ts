@@ -12,6 +12,7 @@ export interface V2Context {
     get(input: Record<string, unknown>): Promise<unknown>
     context(input: Record<string, unknown>): Promise<unknown[]>
     active(): Promise<Record<string, { type: string }>>
+    synthetic(input: Record<string, unknown>): Promise<unknown>
   }
   worktree: {
     create(input: Record<string, unknown>): Promise<{ directory: string }>
@@ -44,6 +45,14 @@ async function gitBranchDefault(directory: string): Promise<string | null> {
   } catch {
     return null
   }
+}
+
+/** Concatenate the text parts of a promptAsync payload into one string. */
+function joinParts(parts: Array<{ type: "text"; text: string }>): string {
+  return parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("\n")
 }
 
 /**
@@ -113,6 +122,11 @@ export function createV2Client(ctx: V2Context, deps: V2ClientDeps = {}): PluginC
         return { data: { id: created.id } }
       },
       promptAsync: async (options) => {
+        // Synthetic (system) messages render as persistent transcript entries
+        // instead of fake user turns — the native form for agent notifications.
+        if (options.synthetic) {
+          return ctx.session.synthetic({ sessionID: options.sessionID, text: joinParts(options.parts), delivery: "queue" })
+        }
         if (options.agent) {
           await ctx.session.switchAgent({ sessionID: options.sessionID, agent: options.agent })
         }
@@ -125,10 +139,7 @@ export function createV2Client(ctx: V2Context, deps: V2ClientDeps = {}): PluginC
             model: { providerID: options.model.providerID, id: options.model.modelID },
           })
         }
-        const text = options.parts
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("\n")
+        const text = joinParts(options.parts)
         return ctx.session.prompt({ sessionID: options.sessionID, text, delivery: "queue" })
       },
       abort: async (options) => ctx.session.interrupt({ sessionID: options.sessionID }),

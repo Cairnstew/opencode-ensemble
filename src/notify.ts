@@ -116,10 +116,12 @@ export function notifyLead(
   if (!team?.lead_session_id) return id
 
   // Fire-and-forget wake — the system prompt transform delivers the actual
-  // content on the lead's next turn.
+  // content on the lead's next turn. Synthetic: renders as a persistent
+  // system entry, not a fake user turn.
   client.session.promptAsync({
     sessionID: team.lead_session_id,
     parts: [{ type: "text", text: "[System: New team message from system]" }],
+    synthetic: true,
   }).catch((err) => {
     log(`notifyLead:wake:failed team=${teamId} err=${err instanceof Error ? err.message : String(err)}`)
   })

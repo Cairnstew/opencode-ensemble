@@ -14,6 +14,7 @@ function mockSetupCtx() {
     session: {
       create: async () => ({ id: "ses_new" }),
       prompt: async () => ({ id: "msg_1" }),
+      synthetic: async () => ({ id: "syn_1" }),
       switchAgent: async () => undefined,
       switchModel: async () => undefined,
       interrupt: async () => undefined,
