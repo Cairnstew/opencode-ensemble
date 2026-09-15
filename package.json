@@ -1,7 +1,7 @@
 {
   "name": "@hueyexe/opencode-ensemble",
-  "version": "0.17.0",
-  "description": "Agent teams for OpenCode — parallel agents with peer-to-peer communication, shared tasks, and coordinated execution",
+  "version": "0.18.0",
+  "description": "Agent teams for OpenCode \u2014 parallel agents with peer-to-peer communication, shared tasks, and coordinated execution",
   "module": "src/index.ts",
   "main": "dist/index.js",
   "exports": {

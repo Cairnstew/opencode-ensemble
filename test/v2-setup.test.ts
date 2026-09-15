@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import { setupEnsemble, extractQuestionOutput, type V2SetupContext } from "../src/v2-setup"
-
 /** Mock V2 setup context: hook registry + programmable event intake. */
 function mockSetupCtx() {
   const hooks: Record<string, Array<(event: never) => unknown>> = {}

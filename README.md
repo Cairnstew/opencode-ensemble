@@ -19,7 +19,7 @@ Plugin built on the public OpenCode SDK. No internal dependencies.
 
 ```jsonc
 {
-  "plugins": ["@hueyexe/opencode-ensemble@0.17.0"]
+  "plugins": ["@hueyexe/opencode-ensemble@0.18.0"]
 }
 ```
 
@@ -184,7 +184,7 @@ Add to your OpenCode config with a pinned version. Project-level or global. On O
 ```jsonc
 {
   // OpenCode v2:
-  "plugins": ["@hueyexe/opencode-ensemble@0.17.0"]
+  "plugins": ["@hueyexe/opencode-ensemble@0.18.0"]
 }
 ```
 
@@ -193,7 +193,7 @@ Add to your OpenCode config with a pinned version. Project-level or global. On O
 ```jsonc
 {
   // OpenCode v1:
-  "plugin": ["@hueyexe/opencode-ensemble@0.17.0"]
+  "plugin": ["@hueyexe/opencode-ensemble@0.18.0"]
 }
 ```
 
@@ -265,7 +265,7 @@ No build step needed for local testing — but run `bun run typecheck && bun tes
 | `team_merge` | Merge a shutdown teammate's branch into working directory (unstaged). Blocks if you have local changes to overlapping files. |
 | `team_cleanup` | Remove the current team when done. Safety-net merges forgotten branches. With `purge`, previews archived-team deletion and returns exact approval labels plus a confirmation token. |
 | `team_status` | See all members, their status, and a task summary. |
-| `team_view` | Switch the TUI to a teammate's session. |
+| `team_view` | Resolve a teammate's session; pass `navigate: true` to switch the TUI to it (opt-in — only when the user explicitly asks). |
 
 Archived-team purge is intentionally two-step. First call `team_cleanup` with `purge` to get a preview, exact approval and denial option labels, and `confirm_token`; no data is deleted. Stale archived worktree/workspace references and stale Ensemble-owned branches are counted in the preview and cleaned during confirmed purge. Arbitrary non-Ensemble branches still block purge for safety. The lead must then use the question tool with those exact options. Only after the user selects the exact approval option should it call `team_cleanup` again with the same `purge`, `confirm_purge: true`, and the preview token.
 
@@ -296,7 +296,7 @@ What you get:
 - **Teammate messages** arriving in the lead's session as labeled blocks with the sender's name.
 - **Rich tool titles** in the sidebar (e.g. "Spawned alice (build)", "Message -> bob", "Task board (3 tasks)").
 - **Status checks** via `team_status` for a snapshot of the whole team.
-- **Terminal extras** (terminal only): toast notifications and attention pings via the bundled `./tui` companion, loaded automatically with the plugin. `team_view` resolves the teammate session — switch to it with the session picker (ctrl+p).
+- **Terminal extras** (terminal only): a sidebar widget with live member status and task counts via the bundled `./tui` companion, loaded automatically with the plugin. `team_view` reports the teammate session by default; ask for it and `navigate: true` switches the TUI there (ctrl+p to return).
 
 ## Architecture
 
@@ -449,7 +449,7 @@ STALL_THRESHOLD_MS=0
 ## Known limitations
 
 - **Teammate messages may switch the lead's agent mode (v1).** When a teammate sends a message back to the lead, OpenCode can start the next prompt loop in build mode even if the lead was in plan/explore mode. Tracked upstream; the lead's mode restores when you send your next message. On v2, pass an explicit `model` on `team_spawn` so teammates never inherit the server default.
-- **No automatic session switching (v2).** `team_view` resolves the teammate session but cannot navigate to it — use the session picker (ctrl+p). Toasts are terminal-only via the bundled companion; desktop and web users get the same information in-context and on the dashboard.
+- **Session switching is opt-in (v2).** `team_view` reports the teammate's session ID by default; it switches the user's client only when asked for with `navigate: true` — agents never hijack the client unprompted. The live sidebar (terminal only) shows member status on every client's dashboard at `http://localhost:4747`.
 - **Per-session shell env is unavailable (v2).** The v2 shell hook carries no session ID, so `ENSEMBLE_*` variables are not injected into teammate shells. Team identity travels in prompts and tool calls instead.
 
 ## How this differs from Claude Code agent teams

@@ -49,6 +49,23 @@ triage.
 
 ## Architecture
 
+### Dual-Host Entrypoint
+
+The plugin supports both hosts from one package: V1 hosts call the exported
+`server()` function; V2 hosts load `Plugin.define({ id: "ensemble", setup })`.
+All 14 tool implementations, the state machine, and SQLite persistence are
+shared — the `src/v2-*.ts` modules adapt the V2 plugin context onto them:
+
+- `v2-client.ts` — V2 ctx → shared PluginClient adapter (permissions, worktree bridge, synthetic wakes)
+- `v2-events.ts` — V2 server events → shared member state machine
+- `v2-setup.ts` — setup wiring: db, hooks, RPC, nudges, dashboard, tools
+- `v2-tools.ts` — the 14 tools on the V2 tool transform (JSON Schema)
+- `v2-rpc.ts` / `rpc.ts` — companion RPC bridge (member/notice/view events)
+- `tui.tsx` — terminal companion: sidebar widget + opt-in session navigation
+
+On V2, teammate wakes deliver as persistent synthetic system messages, and
+teammates receive 9 member tools (6 worker + team_results/team_status/team_view).
+
 ### Plugin SDK Constraint
 
 This is a plugin, not a core contribution. We only use APIs from
@@ -301,8 +318,10 @@ It must contain exactly:
 
 1. Their name and role in the team
 2. The task they are working on
-3. The 6 tools they can use (team_message, team_broadcast,
-   team_tasks_list, team_tasks_add, team_tasks_complete, team_claim)
+3. The tools they can use — the 6 worker tools (team_message,
+   team_broadcast, team_tasks_list, team_tasks_add,
+   team_tasks_complete, team_claim) plus inspection via team_results,
+   team_status, and team_view
    with a one-line description of each
 4. How to report completion (team_message to lead with findings)
 5. How to get unblocked (team_message to lead with the blocker)

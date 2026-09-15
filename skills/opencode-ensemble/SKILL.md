@@ -5,7 +5,7 @@ license: MIT
 compatibility: "OpenCode with the @hueyexe/opencode-ensemble plugin installed"
 metadata:
   author: hueyexe
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # OpenCode Ensemble
@@ -72,11 +72,11 @@ Start with two or three teammates. Add more only when the work has more independ
 - Do not invent task IDs. `team_tasks_add` generates IDs; use the IDs returned by earlier calls when setting `depends_on` or `claim_task`.
 - Keep teammate prompts short. The plugin already injects team role, allowed tools, worktree context, and the required task-result format.
 - Do not give teammates vague prompts like "fix the bug" or "work on tests".
-- Do not ask teammates to use lead-only tools such as `team_spawn`, `team_shutdown`, `team_merge`, `team_cleanup`, or `team_view`.
+- Do not ask teammates to use lead-only tools such as `team_spawn`, `team_shutdown`, `team_merge`, or `team_cleanup`.
 - Do not tell teammates to report only in plain text. They must use `team_message`.
 - Do not merge a teammate branch without reading its result and inspecting the diff.
 - Do not call the work complete until the repository's verification commands pass or you have clearly reported the blocker.
-- On OpenCode v2, `team_view` resolves the session without navigating the TUI, and `team_cleanup` purge needs human approval of the preview before confirmation.
+- On OpenCode v2, teammate reports and notifications arrive as persistent synthetic system lines in the transcript, `team_view` switches the TUI only when passed `navigate: true` (never unprompted — that hijacks the user's client), and `team_cleanup` purge needs human approval of the preview before confirmation.
 
 ## Minimal Example
 
