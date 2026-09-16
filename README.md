@@ -6,14 +6,14 @@
 
 [![npm version](https://img.shields.io/npm/v/@hueyexe/opencode-ensemble.svg)](https://www.npmjs.com/package/@hueyexe/opencode-ensemble)
 [![npm downloads](https://img.shields.io/npm/dm/@hueyexe/opencode-ensemble.svg)](https://www.npmjs.com/package/@hueyexe/opencode-ensemble)
-[![tests](https://img.shields.io/badge/tests-666%20passing-brightgreen.svg)]()
+[![CI](https://github.com/hueyexe/opencode-ensemble/actions/workflows/ci.yml/badge.svg)](https://github.com/hueyexe/opencode-ensemble/actions/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)]()
-[![OpenCode SDK](https://img.shields.io/badge/deps-OpenCode%20SDK%20only-blue.svg)]()
+[![deps](https://img.shields.io/badge/deps-runtime%3A%20OpenCode%20SDKs-blue.svg)]()
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 Run parallel AI agents in OpenCode. Each agent gets its own session, context window, and task. They coordinate through messaging and a shared task board.
 
-Plugin built on the public OpenCode SDK. No internal dependencies.
+Built on the public OpenCode SDKs — no OpenCode internals. Runtime dependencies are the three OpenCode SDK packages (`@opencode-ai/sdk`, `@opencode-ai/plugin`, `@opencode/plugin`). The bundled TUI companion additionally uses SolidJS and OpenTUI, provided by the OpenCode host and declared as peer dependencies.
 
 ## Quick Start
 
@@ -477,7 +477,7 @@ Same coordination model (shared tasks, peer messaging, lead coordination) with s
 ```bash
 bun install
 bun run typecheck
-bun test             # 623 tests
+bun test             # 835 tests
 bun run build
 ```
 

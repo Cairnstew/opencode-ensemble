@@ -33,3 +33,19 @@ jobs:
 
       - name: Build
         run: bun run build
+
+  # Bun CI exercises bun:sqlite; this job exercises the node:sqlite adapter
+  # branch used by Node/Electron hosts (desktop). Runs the real db layer under
+  # Node 24. No bun install needed: the smoke only imports node: builtins and src/.
+  node-runtime:
+    name: Node runtime (node:sqlite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: SQLite adapter smoke under Node
+        run: node --import ./test/node-smoke-hook.mjs test/node-smoke.ts

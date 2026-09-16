@@ -336,7 +336,7 @@ Teammates do not need to know how agent teams work internally.
 
 - TypeScript strict mode
 - Biome linter with `noExplicitAny: error` — no `any` types, no `as any` casts
-- Zero external deps beyond @opencode-ai/sdk and @opencode-ai/plugin; SQLite access stays behind src/db.ts
+- Runtime deps are the three OpenCode SDK packages (@opencode-ai/sdk, @opencode-ai/plugin, @opencode/plugin). The TUI companion additionally peer-depends on solid-js and OpenTUI, both provided by the OpenCode host. No other runtime deps; SQLite access stays behind src/db.ts
 - Every exported function has a JSDoc comment
 - const over let, early returns over else
 - snake_case for SQL columns, camelCase for TypeScript
