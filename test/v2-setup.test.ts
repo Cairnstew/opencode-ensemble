@@ -95,6 +95,46 @@ describe("v2-setup (issue #36)", () => {
     await handle.dispose()
   })
 
+  test("tool execute.after enriches shell arg-fumble errors (issue #39)", async () => {
+    const { ctx, hooks } = mockSetupCtx()
+    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })
+    seedLeadAndMember(handle)
+    const after = hooks["tool"]?.[1]
+    expect(after).toBeDefined()
+    const original = 'Invalid arguments for tool "shell":\n- command: Missing key'
+    const event = {
+      tool: "shell",
+      sessionID: "ses_alice",
+      input: { cmd: "git remote -v 2>&1", description: "Check happy remotes again" },
+      status: "error",
+      error: { message: original },
+    }
+    await after?.(event as never)
+    const message = (event.error as { message: string }).message
+    expect(message).toContain(original)
+    expect(message).toContain('"cmd"')
+    expect(message).toContain('"command"')
+    await handle.dispose()
+  })
+
+  test("tool execute.after leaves non-fumble errors untouched (issue #39)", async () => {
+    const { ctx, hooks } = mockSetupCtx()
+    const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })
+    seedLeadAndMember(handle)
+    const after = hooks["tool"]?.[1]
+    const original = "Command timed out after 120000ms"
+    const event = {
+      tool: "shell",
+      sessionID: "ses_alice",
+      input: { command: "sleep 999" },
+      status: "error",
+      error: { message: original },
+    }
+    await after?.(event as never)
+    expect((event.error as { message: string }).message).toBe(original)
+    await handle.dispose()
+  })
+
   test("shell hook is registered (per-session env unavailable on V2 — see OQ-V2-shell)", async () => {
     const { ctx, hooks } = mockSetupCtx()
     const handle = await setupEnsemble(ctx, { dbPath: ":memory:", dashboardPort: 0 })

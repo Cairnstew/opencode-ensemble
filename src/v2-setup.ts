@@ -11,6 +11,7 @@ import type { ToolDeps } from "./types"
 import { ProgressTracker } from "./progress"
 import { checkToolIsolation, shouldNudgeIdleMember } from "./hooks"
 import { hasReportedCompletion } from "./messaging"
+import { enrichToolError } from "./tool-arg-hint"
 import { rehydrateRegistry } from "./recovery"
 import { findTeamBySession } from "./types"
 import { loadConfig } from "./config"
@@ -251,6 +252,17 @@ export async function setupEnsemble(
       input: unknown
       status: string
       result?: { content?: string | Array<{ type?: string; text?: string }> }
+      error?: { message?: unknown }
+    }
+    if (event.status === "error" && event.error) {
+      // Weak-model arg fumbles (issue #39): the call is already dead from
+      // validation, so append an explicit "the param is X, not Y" hint to
+      // the error the model sees. Arguments are never rewritten — the
+      // model stays in the correction loop. Fail-open by design: a
+      // non-fumble error is returned untouched.
+      if (enrichToolError(event.tool, event.error, event.input)) {
+        vlog(`tool-arg-hint:fired tool=${event.tool} session=${event.sessionID}`)
+      }
     }
     if (event.tool === "question") {
       // Feed the answer text to purge approvals (team_cleanup confirm flow).
