@@ -1013,4 +1013,203 @@ describe("team_spawn — timeout on session.create / worktree.create", () => {
     expect(result).toContain("spawned")
     expect(result).not.toContain("branch:")
   }, 10000)
+
+  describe("agent spaces", () => {
+    test("spawns into a valid space directory with correct permissions and session.create directory", async () => {
+      // Create a real temp git repo for the space
+      const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const os = await import("node:os")
+      const spaceDir = mkdtempSync(join(os.tmpdir(), "ensemble-space-"))
+      mkdirSync(join(spaceDir, ".git"), { recursive: true })
+      writeFileSync(join(spaceDir, "README.md"), "test")
+
+      deps.config.spaces = { "infra": spaceDir }
+
+      const result = await executeTeamSpawn(deps, {
+        name: "infra-bot",
+        agent: "build",
+        prompt: "Deploy the thing",
+        space: "infra",
+        worktree: false,
+      }, "lead-sess")
+
+      expect(result).toContain("infra-bot")
+      expect(result).toContain("space: infra")
+
+      // session.create should be called with directory = spaceDir
+      const createCalls = deps.client.calls.filter(c => c.method === "session.create")
+      expect(createCalls).toHaveLength(1)
+      const createOpts = createCalls[0]!.args[0] as { directory?: string; workspaceID?: string }
+      expect(createOpts.directory).toBe(spaceDir)
+      expect(createOpts.workspaceID).toBeUndefined()
+
+      // worktree.create should NOT be called
+      const worktreeCalls = deps.client.calls.filter(c => c.method === "worktree.create")
+      expect(worktreeCalls).toHaveLength(0)
+
+      // DB should have space columns set
+      const row = deps.db.query("SELECT space_name, space_dir, worktree_dir, worktree_branch FROM team_member WHERE name = ?").get("infra-bot") as Record<string, unknown>
+      expect(row.space_name).toBe("infra")
+      expect(row.space_dir).toBe(spaceDir)
+      expect(row.worktree_dir).toBeNull()
+      expect(row.worktree_branch).toBeNull()
+
+      // Permissions should scope edit to spaceDir
+      const permission = (createCalls[0]!.args[0] as { permission?: Array<{ permission: string; pattern: string; action: string }> }).permission
+      expect(permission).toContainEqual({ permission: "edit", pattern: `${spaceDir}/**`, action: "allow" })
+
+      // Cleanup
+      const { rmSync } = await import("node:fs")
+      rmSync(spaceDir, { recursive: true, force: true })
+    })
+
+    test("throws clear error for unknown space name listing valid names", async () => {
+      deps.config.spaces = { "infra": "/tmp/infra", "web": "/tmp/web" }
+
+      await expect(
+        executeTeamSpawn(deps, {
+          name: "bob",
+          agent: "build",
+          prompt: "Do stuff",
+          space: "nonexistent",
+          worktree: false,
+        }, "lead-sess")
+      ).rejects.toThrow(/Unknown agent space "nonexistent".*Valid spaces: infra, web/)
+    })
+
+    test("throws when no spaces are configured", async () => {
+      deps.config.spaces = {}
+
+      await expect(
+        executeTeamSpawn(deps, {
+          name: "bob",
+          agent: "build",
+          prompt: "Do stuff",
+          space: "anything",
+          worktree: false,
+        }, "lead-sess")
+      ).rejects.toThrow(/Valid spaces: \(none configured\)/)
+    })
+
+    test("throws when space + worktree are both set", async () => {
+      deps.config.spaces = { "infra": "/tmp/infra" }
+
+      await expect(
+        executeTeamSpawn(deps, {
+          name: "bob",
+          agent: "build",
+          prompt: "Do stuff",
+          space: "infra",
+          worktree: true,
+        }, "lead-sess")
+      ).rejects.toThrow(/Cannot use both "space" and "worktree"/)
+    })
+
+    test("space wins when worktree is explicitly false", async () => {
+      const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const os = await import("node:os")
+      const spaceDir = mkdtempSync(join(os.tmpdir(), "ensemble-space-"))
+      mkdirSync(join(spaceDir, ".git"), { recursive: true })
+      writeFileSync(join(spaceDir, "README.md"), "test")
+
+      deps.config.spaces = { "infra": spaceDir }
+
+      const result = await executeTeamSpawn(deps, {
+        name: "bot",
+        agent: "build",
+        prompt: "Deploy",
+        space: "infra",
+        worktree: false,
+      }, "lead-sess")
+
+      expect(result).toContain("space: infra")
+      const createCalls = deps.client.calls.filter(c => c.method === "session.create")
+      expect((createCalls[0]!.args[0] as { directory?: string }).directory).toBe(spaceDir)
+
+      const { rmSync } = await import("node:fs")
+      rmSync(spaceDir, { recursive: true, force: true })
+    })
+
+    test("use-time validation catches directory deleted after config load", async () => {
+      const { mkdirSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const os = await import("node:os")
+      const spaceDir = join(os.tmpdir(), "ensemble-space-deleted-" + Date.now())
+      mkdirSync(join(spaceDir, ".git"), { recursive: true })
+
+      // Config says the space exists
+      deps.config.spaces = { "ephemeral": spaceDir }
+
+      // Delete it before spawn
+      const { rmSync } = await import("node:fs")
+      rmSync(spaceDir, { recursive: true, force: true })
+
+      await expect(
+        executeTeamSpawn(deps, {
+          name: "bob",
+          agent: "build",
+          prompt: "Do stuff",
+          space: "ephemeral",
+          worktree: false,
+        }, "lead-sess")
+      ).rejects.toThrow(/directory no longer exists/)
+    })
+
+    test("context message includes space-specific instructions", async () => {
+      const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const os = await import("node:os")
+      const spaceDir = mkdtempSync(join(os.tmpdir(), "ensemble-space-"))
+      mkdirSync(join(spaceDir, ".git"), { recursive: true })
+      writeFileSync(join(spaceDir, "README.md"), "test")
+
+      deps.config.spaces = { "infra": spaceDir }
+
+      await executeTeamSpawn(deps, {
+        name: "infra-bot",
+        agent: "build",
+        prompt: "Deploy the thing",
+        space: "infra",
+        worktree: false,
+      }, "lead-sess")
+
+      const promptCalls = deps.client.calls.filter(c => c.method === "session.promptAsync")
+      expect(promptCalls).toHaveLength(1)
+      const context = (promptCalls[0]!.args[0] as { parts: Array<{ text: string }> }).parts[0]!.text
+      expect(context).toContain("predetermined agent space")
+      expect(context).toContain(spaceDir)
+      expect(context).toContain("independent git repository")
+
+      const { rmSync } = await import("node:fs")
+      rmSync(spaceDir, { recursive: true, force: true })
+    })
+
+    test("context message includes <space> tag in task-result", async () => {
+      const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs")
+      const { join } = await import("node:path")
+      const os = await import("node:os")
+      const spaceDir = mkdtempSync(join(os.tmpdir(), "ensemble-space-"))
+      mkdirSync(join(spaceDir, ".git"), { recursive: true })
+      writeFileSync(join(spaceDir, "README.md"), "test")
+
+      deps.config.spaces = { "infra": spaceDir }
+
+      await executeTeamSpawn(deps, {
+        name: "infra-bot",
+        agent: "build",
+        prompt: "Deploy",
+        space: "infra",
+        worktree: false,
+      }, "lead-sess")
+
+      const promptCalls = deps.client.calls.filter(c => c.method === "session.promptAsync")
+      const context = (promptCalls[0]!.args[0] as { parts: Array<{ text: string }> }).parts[0]!.text
+      expect(context).toContain("<space>infra</space>")
+
+      const { rmSync } = await import("node:fs")
+      rmSync(spaceDir, { recursive: true, force: true })
+    })
+  })
 })

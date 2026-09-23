@@ -21,12 +21,22 @@ export async function executeTeamMerge(
 ): Promise<string> {
   const teamInfo = requireLead(deps, sessionId)
 
-  const member = deps.db.query("SELECT status, worktree_branch, worktree_dir FROM team_member WHERE team_id = ? AND name = ?")
-    .get(teamInfo.teamId, args.member) as { status: string; worktree_branch: string | null; worktree_dir: string | null } | null
+  const member = deps.db.query("SELECT status, worktree_branch, worktree_dir, space_name, space_dir FROM team_member WHERE team_id = ? AND name = ?")
+    .get(teamInfo.teamId, args.member) as { status: string; worktree_branch: string | null; worktree_dir: string | null; space_name: string | null; space_dir: string | null } | null
   if (!member) throw new Error(`Teammate "${args.member}" not found in team "${teamInfo.teamName}"`)
 
   if (member.status !== "shutdown" && member.status !== "error") {
     throw new Error(`Teammate "${args.member}" is still active (status: ${member.status}). Shut them down first with team_shutdown.`)
+  }
+
+  // Space-based members operate in independent repositories — there is no
+  // worktree branch to merge into the lead's project.
+  if (member.space_name) {
+    throw new Error(
+      `Cannot merge "${args.member}" — they work in agent space "${member.space_name}" ` +
+      `(${member.space_dir}). Space-based members operate in an independent repository. ` +
+      `Their changes are already in that repository's git history.`
+    )
   }
 
   if (!member.worktree_branch) {

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, statSync } from "node:fs"
 import path from "node:path"
 
 /** Plugin configuration shape. All fields optional — defaults applied. */
@@ -31,6 +31,8 @@ export interface EnsembleConfig {
   modelAssignment?: "default" | "rotate" | "random"
   /** Lead asks user about model preferences before spawning (default: false) */
   promptForModels?: boolean
+  /** Pre-registered agent spaces: name → absolute directory path (each must be a git repo) */
+  spaces?: Record<string, string>
 }
 
 /** Default configuration values. */
@@ -49,6 +51,7 @@ export const DEFAULT_CONFIG: Required<EnsembleConfig> = {
   modelsByAgent: {},
   modelAssignment: "default",
   promptForModels: false,
+  spaces: {},
 }
 
 /** Read a JSON config file, returning an empty object on missing/invalid. */
@@ -75,6 +78,12 @@ function readConfigFile(filePath: string): Partial<EnsembleConfig> {
     }
     if (typeof raw.modelAssignment === "string" && ["default", "rotate", "random"].includes(raw.modelAssignment)) result.modelAssignment = raw.modelAssignment as "default" | "rotate" | "random"
     if (typeof raw.promptForModels === "boolean") result.promptForModels = raw.promptForModels
+    if (typeof raw.spaces === "object" && raw.spaces !== null && !Array.isArray(raw.spaces)) {
+      const valid = Object.entries(raw.spaces as Record<string, unknown>).every(
+        ([k, v]) => typeof k === "string" && typeof v === "string"
+      )
+      if (valid) result.spaces = raw.spaces as Record<string, string>
+    }
     return result
   } catch (err) {
     if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") return {}
@@ -105,6 +114,32 @@ export function loadConfig(projectDir: string): Required<EnsembleConfig> {
 
   const stall = process.env.STALL_THRESHOLD_MS
   if (stall !== undefined) merged.stallThresholdMs = stall === "0" ? 0 : (parseInt(stall, 10) || merged.stallThresholdMs)
+
+  // Validate space directories: must exist, be directories, and be git repos.
+  // Drop invalid entries with a warning rather than failing hard.
+  if (merged.spaces && Object.keys(merged.spaces).length > 0) {
+    const validSpaces: Record<string, string> = {}
+    for (const [name, dir] of Object.entries(merged.spaces)) {
+      try {
+        const stat = statSync(dir)
+        if (!stat.isDirectory()) {
+          console.warn(`[ensemble] Space "${name}" path is not a directory: ${dir} — skipping`)
+          continue
+        }
+        // Check for .git entry to confirm it's a git repository
+        try {
+          statSync(path.join(dir, ".git"))
+        } catch {
+          console.warn(`[ensemble] Space "${name}" is not a git repository (no .git): ${dir} — skipping`)
+          continue
+        }
+        validSpaces[name] = dir
+      } catch {
+        console.warn(`[ensemble] Space "${name}" directory does not exist: ${dir} — skipping`)
+      }
+    }
+    merged.spaces = validSpaces
+  }
 
   return merged
 }

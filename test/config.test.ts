@@ -99,4 +99,87 @@ describe("config", () => {
     const config = loadConfig(tmpDir)
     expect(config.timeoutMs).toBe(123)
   })
+
+  describe("spaces", () => {
+    test("valid space with git repo is included in config", () => {
+      // Create a real git-like dir
+      const spaceDir = mkdtempSync(path.join(os.tmpdir(), "ensemble-space-"))
+      mkdirSync(path.join(spaceDir, ".git"), { recursive: true })
+
+      const configDir = path.join(tmpDir, ".opencode")
+      mkdirSync(configDir, { recursive: true })
+      writeFileSync(path.join(configDir, "ensemble.json"), JSON.stringify({ spaces: { "infra": spaceDir } }))
+
+      const config = loadConfig(tmpDir)
+      expect(config.spaces).toEqual({ "infra": spaceDir })
+
+      rmSync(spaceDir, { recursive: true, force: true })
+    })
+
+    test("missing directory is dropped with warning", () => {
+      const configDir = path.join(tmpDir, ".opencode")
+      mkdirSync(configDir, { recursive: true })
+      writeFileSync(path.join(configDir, "ensemble.json"), JSON.stringify({ spaces: { "missing": "/tmp/nonexistent-dir" } }))
+
+      const config = loadConfig(tmpDir)
+      expect(config.spaces).toEqual({})
+    })
+
+    test("non-git directory is dropped with warning", () => {
+      const spaceDir = mkdtempSync(path.join(os.tmpdir(), "ensemble-space-"))
+      // No .git directory created
+
+      const configDir = path.join(tmpDir, ".opencode")
+      mkdirSync(configDir, { recursive: true })
+      writeFileSync(path.join(configDir, "ensemble.json"), JSON.stringify({ spaces: { "notagit": spaceDir } }))
+
+      const config = loadConfig(tmpDir)
+      expect(config.spaces).toEqual({})
+
+      rmSync(spaceDir, { recursive: true, force: true })
+    })
+
+    test("non-directory path is dropped with warning", () => {
+      const filePath = path.join(tmpDir, "not-a-dir")
+      writeFileSync(filePath, "I am a file")
+
+      const configDir = path.join(tmpDir, ".opencode")
+      mkdirSync(configDir, { recursive: true })
+      writeFileSync(path.join(configDir, "ensemble.json"), JSON.stringify({ spaces: { "file": filePath } }))
+
+      const config = loadConfig(tmpDir)
+      expect(config.spaces).toEqual({})
+    })
+
+    test("spaces defaults to empty object", () => {
+      const config = loadConfig(tmpDir)
+      expect(config.spaces).toEqual({})
+    })
+
+    test("invalid spaces type is ignored", () => {
+      const configDir = path.join(tmpDir, ".opencode")
+      mkdirSync(configDir, { recursive: true })
+      writeFileSync(path.join(configDir, "ensemble.json"), JSON.stringify({ spaces: ["not", "a", "record"] }))
+
+      const config = loadConfig(tmpDir)
+      expect(config.spaces).toEqual({})
+    })
+
+    test("mixed valid and invalid spaces — only valid survive", () => {
+      const validDir = mkdtempSync(path.join(os.tmpdir(), "ensemble-space-"))
+      mkdirSync(path.join(validDir, ".git"), { recursive: true })
+
+      const configDir = path.join(tmpDir, ".opencode")
+      mkdirSync(configDir, { recursive: true })
+      writeFileSync(path.join(configDir, "ensemble.json"), JSON.stringify({
+        spaces: { "good": validDir, "bad": "/tmp/nonexistent", "file": path.join(tmpDir, "file.txt") }
+      }))
+      writeFileSync(path.join(tmpDir, "file.txt"), "not a dir")
+
+      const config = loadConfig(tmpDir)
+      expect(config.spaces).toEqual({ "good": validDir })
+
+      rmSync(validDir, { recursive: true, force: true })
+    })
+  })
 })

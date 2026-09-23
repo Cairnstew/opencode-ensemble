@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test"
+import { rmSync } from "node:fs"
 import { setupDeps, insertTeam, insertMember } from "./helpers"
 import { executeTeamShutdown } from "../src/tools/team-shutdown"
 import { executeTeamMerge } from "../src/tools/team-merge"
@@ -285,6 +286,26 @@ describe("team_merge", () => {
     const result = await executeTeamMerge(deps, { member: "alice" }, lead, trackMerge, noopDelete, noopOverlap)
     expect(mergeCalled).toBe(true)
     expect(result).toContain("Merged alice's changes")
+  })
+
+  test("rejects merge for space-based member with clear message", async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import("node:fs")
+    const { join } = await import("node:path")
+    const os = await import("node:os")
+    const spaceDir = mkdtempSync(join(os.tmpdir(), "ensemble-space-"))
+    mkdirSync(join(spaceDir, ".git"), { recursive: true })
+    writeFileSync(join(spaceDir, "README.md"), "test")
+
+    deps.config.spaces = { "infra": spaceDir }
+
+    await executeTeamCreate(deps, { name: "space-team" }, lead)
+    await executeTeamSpawn(deps, { name: "infra-bot", agent: "build", prompt: "deploy", space: "infra", worktree: false }, lead)
+    await executeTeamShutdown(deps, { member: "infra-bot" }, lead, undefined, noopPreserve)
+
+    await expect(executeTeamMerge(deps, { member: "infra-bot" }, lead, noopMerge, noopDelete, noopOverlap))
+      .rejects.toThrow(/Cannot merge.*space.*"infra".*independent repository/)
+
+    rmSync(spaceDir, { recursive: true, force: true })
   })
 
   test("merge output is clear and actionable", async () => {

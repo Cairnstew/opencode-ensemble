@@ -436,7 +436,7 @@ const plugin: Plugin = async (input) => {
 
       team_spawn: tool({
         description: "Spawn a new teammate that works in parallel. The teammate starts immediately with the given prompt. " +
-          "Each teammate gets their own git worktree for file isolation. " +
+          "Each teammate gets their own git worktree for file isolation, or can be spawned into a predetermined agent space. " +
           "Teammates work asynchronously and will message you when done. Do not poll for their status.",
         args: {
           name: tool.schema.string().describe("Teammate name (lowercase alphanumeric with hyphens)"),
@@ -446,6 +446,7 @@ const plugin: Plugin = async (input) => {
           claim_task: tool.schema.string().optional().describe("Task ID to auto-claim for this teammate (optional)"),
           worktree: tool.schema.boolean().default(true).describe("Create a git worktree for file isolation (default: true, set false for read-only agents)"),
           plan_approval: tool.schema.boolean().default(false).describe("Require teammate to send a plan for approval before writing files (default: false)"),
+          space: tool.schema.string().optional().describe("Spawn into a predetermined agent space by name (from ensemble.json config). Mutually exclusive with worktree — space members work in a separate repository, not a worktree of the current project."),
         },
         async execute(args, ctx) {
           const result = await executeTeamSpawn(deps, args, ctx.sessionID)

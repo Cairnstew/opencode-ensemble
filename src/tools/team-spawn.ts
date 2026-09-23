@@ -1,3 +1,5 @@
+import { statSync } from "node:fs"
+import path from "node:path"
 import type { ToolDeps, PermissionRule } from "../types"
 import { validateMemberName } from "../util"
 import { requireLead } from "./shared"
@@ -56,14 +58,38 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 /**
+ * Validate a space directory at use-time: exists, is a directory, and is a git repo.
+ * The spike confirmed session.create({ directory }) silently falls back to the global
+ * project on bad paths — this is the loud guard that prevents silent mis-scoping.
+ * Called immediately before session.create, after config-load-time validation.
+ */
+function validateSpaceDirectory(spaceName: string, spaceDir: string): void {
+  let stat: ReturnType<typeof statSync>
+  try {
+    stat = statSync(spaceDir)
+  } catch {
+    throw new Error(`Space "${spaceName}" directory no longer exists: ${spaceDir}`)
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`Space "${spaceName}" path is not a directory: ${spaceDir}`)
+  }
+  try {
+    statSync(path.join(spaceDir, ".git"))
+  } catch {
+    throw new Error(`Space "${spaceName}" is not a git repository (no .git): ${spaceDir}`)
+  }
+}
+
+/**
  * Execute the team_spawn tool. Creates a child session and starts a teammate.
  * By default, each teammate gets their own git worktree for file isolation.
  * Pass worktree: false for read-only agents that don't need isolation.
+ * Pass space: "<name>" to spawn into a predetermined agent space (separate repo).
  * Pass plan_approval: true to require the teammate to send a plan before writing.
  */
 export async function executeTeamSpawn(
   deps: ToolDeps,
-  args: { name: string; agent?: string | null; prompt: string; model?: string; claim_task?: string; worktree?: boolean; plan_approval?: boolean },
+  args: { name: string; agent?: string | null; prompt: string; model?: string; claim_task?: string; worktree?: boolean; plan_approval?: boolean; space?: string },
   sessionId: string,
 ): Promise<string> {
   // Normalize agent: the tool schema defaults to "build", but Zod's .default()
@@ -87,13 +113,41 @@ export async function executeTeamSpawn(
     .get(teamInfo.teamId, args.name)
   if (existing) throw new Error(`Teammate "${args.name}" already exists in team "${teamInfo.teamName}"`)
 
+  // Resolve space if specified
+  let spaceName: string | null = null
+  let spaceDir: string | null = null
+
+  if (args.space) {
+    // Mutually exclusive with worktree
+    if (args.worktree !== false) {
+      throw new Error(
+        `Cannot use both "space" and "worktree" on the same spawn. ` +
+        `Space-based spawns operate in an independent repository, not a worktree. ` +
+        `Set worktree: false when using space.`
+      )
+    }
+
+    const spaces = deps.config.spaces
+    if (!spaces || !spaces[args.space]) {
+      const validNames = spaces ? Object.keys(spaces) : []
+      throw new Error(
+        `Unknown agent space "${args.space}". ` +
+        `Valid spaces: ${validNames.length > 0 ? validNames.join(", ") : "(none configured)"}`
+      )
+    }
+
+    spaceName = args.space
+    spaceDir = spaces[args.space]!
+    log(`spawn:space name=${args.name} space=${spaceName} dir=${spaceDir}`)
+  }
+
   const isReadOnly = agent === "plan" || agent === "explore"
-  const useWorktree = args.worktree !== false && !isReadOnly && !isWorktreeDirectory(deps.directory)
+  const useWorktree = !spaceDir && args.worktree !== false && !isReadOnly && !isWorktreeDirectory(deps.directory)
   const usePlanApproval = args.plan_approval === true
 
-  log(`spawn:start name=${args.name} agent=${agent} worktree=${useWorktree}`)
+  log(`spawn:start name=${args.name} agent=${agent} worktree=${useWorktree} space=${spaceName ?? "none"}`)
 
-  // Create worktree if enabled
+  // Create worktree if enabled (only when not using a space)
   let worktreeDir: string | null = null
   let worktreeBranch: string | null = null
 
@@ -146,7 +200,7 @@ export async function executeTeamSpawn(
 
   // Permission rules on session.create are the hard gate (server-enforced).
   // For read-only agents, deny write tools and explicitly allow team tools.
-  // For all agents with worktrees, allowlist the worktree path for edit/bash.
+  // For all agents with worktrees or spaces, allowlist the working path for edit/bash.
   // The 9 member-accessible tools per the documented tool table: the 6 worker
   // tools plus the 3 inspection tools (team_results/team_status/team_view —
   // any member). Caught live 2026-09-15: teammates could not read each
@@ -164,7 +218,16 @@ export async function executeTeamSpawn(
   ] as const
   const permission: PermissionRule[] = []
 
-  if (worktreeDir) {
+  if (spaceDir) {
+    // Space: allow edit only within the space directory (confirmed by spike:
+    // permission matching is pure pattern-based, no project relationship needed)
+    permission.push(
+      { permission: "edit", pattern: `${spaceDir}/**`, action: "allow" },
+    )
+    if (!isReadOnly) {
+      permission.push({ permission: "bash", pattern: "*", action: "allow" })
+    }
+  } else if (worktreeDir) {
     permission.push(
       { permission: "edit", pattern: `${worktreeDir}/**`, action: "allow" },
     )
@@ -190,7 +253,15 @@ export async function executeTeamSpawn(
   // permissions, so explore stays read-only.
   permission.push({ permission: "execute", pattern: "*", action: "allow" })
 
-  // Create child session — bind to workspace if available (server-enforced CWD isolation).
+  // Validate space directory immediately before session.create.
+  // The spike confirmed session.create({ directory }) silently falls back to
+  // the global project on bad paths — this is the loud guard.
+  if (spaceDir) {
+    validateSpaceDirectory(spaceName!, spaceDir)
+  }
+
+  // Create child session — bind to workspace if available (server-enforced CWD isolation),
+  // or to space directory for predetermined agent spaces.
   // Falls back to no workspace binding if workspace.create failed.
   let childSessionId: string | undefined
   try {
@@ -201,6 +272,7 @@ export async function executeTeamSpawn(
         title: `${args.name} (@${agent} teammate)`,
         permission,
         ...(workspaceId ? { workspaceID: workspaceId } : {}),
+        ...(spaceDir ? { directory: spaceDir } : {}),
       }),
       getSpawnTimeout(), `session.create for "${args.name}"`
     )
@@ -213,6 +285,7 @@ export async function executeTeamSpawn(
     const prev = spawnFailures.get(teamInfo.teamId)
     spawnFailures.set(teamInfo.teamId, { count: (prev?.count ?? 0) + 1, lastError: errMsg })
     // Rollback workspace and worktree if session creation failed
+    // (Space directories are config-managed — never removed on rollback)
     if (workspaceId) {
       try { await deps.client.workspace.remove({ id: workspaceId }) } catch { /* best effort */ }
     }
@@ -241,9 +314,9 @@ export async function executeTeamSpawn(
   if (resolvedModel) log(`spawn:model name=${args.name} model=${resolvedModel}`)
 
   deps.db.run(
-    `INSERT INTO team_member (team_id, name, session_id, agent, status, execution_status, model, prompt, worktree_dir, worktree_branch, workspace_id, plan_approval, time_created, time_updated)
-     VALUES (?, ?, ?, ?, 'busy', 'starting', ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [teamInfo.teamId, args.name, childSessionId, agent, resolvedModel ?? null, args.prompt, worktreeDir, worktreeBranch, workspaceId, planApproval, now, now]
+    `INSERT INTO team_member (team_id, name, session_id, agent, status, execution_status, model, prompt, worktree_dir, worktree_branch, workspace_id, plan_approval, space_name, space_dir, time_created, time_updated)
+     VALUES (?, ?, ?, ?, 'busy', 'starting', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [teamInfo.teamId, args.name, childSessionId, agent, resolvedModel ?? null, args.prompt, worktreeDir, worktreeBranch, workspaceId, planApproval, spaceName, spaceDir, now, now]
   )
 
   // Row is inserted as 'busy' directly -- there is no ready->busy status-event
@@ -284,7 +357,15 @@ export async function executeTeamSpawn(
     context.push(`Other teammates: ${otherMembers.map(m => m.name).join(", ")}`)
   }
 
-  if (worktreeBranch && worktreeDir && !workspaceId) {
+  // Space-specific context: independent repository, own git history
+  if (spaceDir && spaceName) {
+    context.push(
+      `You are working in a predetermined agent space "${spaceName}".`,
+      `Your working directory is: ${spaceDir}`,
+      `This is an independent git repository — manage its git history directly.`,
+      `Your changes are isolated from the main project and from other teammates.`,
+    )
+  } else if (worktreeBranch && worktreeDir && !workspaceId) {
     // Workspace binding failed — fallback to prompt-based CWD instruction
     context.push(
       `You are working on branch "${worktreeBranch}" in your own worktree at: ${worktreeDir}`,
@@ -346,7 +427,7 @@ export async function executeTeamSpawn(
   }
 
   context.push("", "When you finish your task:")
-  if (!isReadOnly && worktreeBranch) {
+  if (!isReadOnly && (worktreeBranch || spaceDir)) {
     context.push(`1. Commit your changes: git add -A && git commit -m "your summary"`)
     context.push("2. If you claimed a task, mark it complete using team_tasks_complete.")
     context.push(
@@ -371,8 +452,11 @@ export async function executeTeamSpawn(
   if (worktreeBranch) {
     context.push(`<branch>${worktreeBranch}</branch>`)
   }
+  if (spaceDir) {
+    context.push(`<space>${spaceName}</space>`)
+  }
   context.push("</task-result>")
-  const lastStep = !isReadOnly && worktreeBranch ? "4" : !isReadOnly ? "3" : "2"
+  const lastStep = !isReadOnly && (worktreeBranch || spaceDir) ? "4" : !isReadOnly ? "3" : "2"
   context.push(
     `${lastStep}. STOP. Do not send follow-up confirmations, status updates, or 'standing by' messages.`,
     "",
@@ -428,6 +512,7 @@ export async function executeTeamSpawn(
       if (worktreeDir) {
         deps.client.worktree.remove({ worktreeRemoveInput: { directory: worktreeDir } }).catch(() => { /* best effort */ })
       }
+      // Space directories are config-managed — never removed on rollback
       const modelInfo = resolvedModel ? ` (model: ${resolvedModel})` : ""
       deps.client.tui.showToast({
         title: "Team",
@@ -444,6 +529,7 @@ export async function executeTeamSpawn(
     } catch { /* rollback failed — watchdog will clean up stale member */ }
   })
 
+  const spaceInfo = spaceDir ? ` (space: ${spaceName})` : ""
   const branchInfo = worktreeBranch ? ` (branch: ${worktreeBranch})` : ""
   const planInfo = usePlanApproval ? " [plan mode — will send plan for approval]" : ""
   const claimInfo = claimedTaskContent
@@ -452,5 +538,5 @@ export async function executeTeamSpawn(
   // Reset circuit breaker on success
   spawnFailures.delete(teamInfo.teamId)
   log(`spawn:done name=${args.name} sessionId=${childSessionId}`)
-  return `Teammate "${args.name}" spawned (agent: ${agent})${branchInfo}${planInfo}${claimInfo}. They are working on: ${args.prompt.slice(0, 120)}${args.prompt.length > 120 ? "..." : ""}`
+  return `Teammate "${args.name}" spawned (agent: ${agent})${spaceInfo}${branchInfo}${planInfo}${claimInfo}. They are working on: ${args.prompt.slice(0, 120)}${args.prompt.length > 120 ? "..." : ""}`
 }

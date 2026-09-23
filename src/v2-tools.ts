@@ -97,7 +97,7 @@ export async function registerV2Tools(domain: V2ToolDomain, deps: ToolDeps): Pro
       name: "team_spawn",
       description:
         "Spawn a new teammate that works in parallel. The teammate starts immediately with the given prompt. " +
-        "Each teammate gets their own git worktree for file isolation. " +
+        "Each teammate gets their own git worktree for file isolation, or can be spawned into a predetermined agent space. " +
         "Teammates work asynchronously and will message you when done. Do not poll for their status.",
       input: {
         type: "object",
@@ -109,6 +109,7 @@ export async function registerV2Tools(domain: V2ToolDomain, deps: ToolDeps): Pro
           claim_task: str("Task ID to auto-claim for this teammate (optional)"),
           worktree: bool("Create a git worktree for file isolation (default: true, set false for read-only agents)", true),
           plan_approval: bool("Require teammate to send a plan for approval before writing files (default: false)", false),
+          space: str("Spawn into a predetermined agent space by name (from ensemble.json config). Mutually exclusive with worktree."),
         },
         required: ["name", "prompt"],
         additionalProperties: false,

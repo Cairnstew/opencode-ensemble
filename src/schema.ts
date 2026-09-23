@@ -200,10 +200,16 @@ export const MIGRATIONS: string[] = [
   // (retry_until > Date.now()), so there is no explicit clear-write anywhere in this
   // fix; it simply becomes stale and gets superseded by real activity or by time
   // elapsing.
-  `ALTER TABLE team_member ADD COLUMN retry_until INTEGER;
+  `   ALTER TABLE team_member ADD COLUMN retry_until INTEGER;
    ALTER TABLE team_member ADD COLUMN retry_attempt INTEGER;
    ALTER TABLE team_member ADD COLUMN retry_provider TEXT;
    ALTER TABLE team_member ADD COLUMN retry_message TEXT;`,
+  // Migration 11: Add space columns to team_member for predetermined agent spaces.
+  // space_name is the config key (e.g. "infra"), space_dir is the resolved absolute path.
+  // These are independent of worktree_dir/worktree_branch — space members operate in
+  // separate git repos, not worktrees of the current project.
+  `ALTER TABLE team_member ADD COLUMN space_name TEXT;
+   ALTER TABLE team_member ADD COLUMN space_dir TEXT;`,
 ]
 
 /**

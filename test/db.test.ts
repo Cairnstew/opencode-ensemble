@@ -88,6 +88,29 @@ describe("schema migrations", () => {
     expect(row.retry_message).toBeNull()
   })
 
+  test("migration 11 adds space_name and space_dir columns to team_member, nullable", () => {
+    applyMigrations(db)
+    const cols = db.query("PRAGMA table_info(team_member)").all() as Array<{ name: string; notnull: number; dflt_value: unknown }>
+    for (const name of ["space_name", "space_dir"]) {
+      const col = cols.find(c => c.name === name)
+      expect(col).toBeTruthy()
+      expect(col?.notnull).toBe(0)
+      expect(col?.dflt_value).toBeNull()
+    }
+
+    // Existing rows get NULL
+    db.run(
+      "INSERT INTO team (id, name, project_id, lead_session_id, status, delegate, time_created, time_updated) VALUES ('t1', 'team', 'default', 'lead', 'active', 0, 0, 0)"
+    )
+    db.run(
+      "INSERT INTO team_member (team_id, name, session_id, agent, time_created, time_updated) VALUES ('t1', 'alice', 's1', 'build', 0, 0)"
+    )
+    const row = db.query("SELECT space_name, space_dir FROM team_member WHERE name = 'alice'").get() as
+      { space_name: string | null; space_dir: string | null }
+    expect(row.space_name).toBeNull()
+    expect(row.space_dir).toBeNull()
+  })
+
   test("creates team_task table", () => {
     applyMigrations(db)
     const row = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='team_task'").get()

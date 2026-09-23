@@ -92,6 +92,7 @@ function rAgents(t){
         chip('status '+d,'muted')+chip('msg '+mi,'muted')+chip(E(m.executionStatus||m.status),m.status==='busy'?'blue':m.status==='error'?'red':'muted')+
         (m.isRetrying?chip('retrying'+(m.retryAttempt!=null?' (attempt '+m.retryAttempt+')':''),'amber'):'')+
         (m.worktreeBranch?chip(E(m.worktreeBranch),'muted'):'')+
+        (m.spaceName?chip(E(m.spaceName),'muted'):'')+
       '</div></button>';
   }).join('');
   patch(el,html);
@@ -117,6 +118,7 @@ function openDrawer(name){
   if(m.lastNudgedAt)meta.push(chip('nudged '+relT(m.lastNudgedAt),'amber'));
   if(m.isRetrying)meta.push(chip('retrying'+(m.retryAttempt!=null?' (attempt '+m.retryAttempt+')':'')+(m.retryMessage?': '+E(m.retryMessage):''),'amber'));
   if(m.worktreeBranch)meta.push(chip(E(m.worktreeBranch),'muted'));
+  if(m.spaceName)meta.push(chip(E(m.spaceName),'muted'));
   h+='<div class="flex flex-wrap gap-1.5 mb-4 pb-4 border-b border-base-800/50">'+meta.join('')+'</div>';
   // Prompt
   if(m.prompt){
