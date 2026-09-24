@@ -408,13 +408,19 @@ const plugin: Plugin = async (input) => {
       output.env.ENSEMBLE_ROLE = teamInfo.role
       if (teamInfo.memberName) {
         output.env.ENSEMBLE_MEMBER = teamInfo.memberName
-        const member = db.query("SELECT worktree_branch, worktree_dir FROM team_member WHERE team_id = ? AND name = ?")
-          .get(teamInfo.teamId, teamInfo.memberName) as { worktree_branch: string | null; worktree_dir: string | null } | null
+        const member = db.query("SELECT worktree_branch, worktree_dir, space_name, space_dir FROM team_member WHERE team_id = ? AND name = ?")
+          .get(teamInfo.teamId, teamInfo.memberName) as { worktree_branch: string | null; worktree_dir: string | null; space_name: string | null; space_dir: string | null } | null
         if (member?.worktree_branch) {
           output.env.ENSEMBLE_BRANCH = member.worktree_branch
         }
         if (member?.worktree_dir) {
           output.env.ENSEMBLE_WORKTREE_DIR = member.worktree_dir
+        }
+        if (member?.space_name) {
+          output.env.ENSEMBLE_SPACE = member.space_name
+        }
+        if (member?.space_dir) {
+          output.env.ENSEMBLE_SPACE_DIR = member.space_dir
         }
       }
     },
@@ -437,7 +443,14 @@ const plugin: Plugin = async (input) => {
       team_spawn: tool({
         description: "Spawn a new teammate that works in parallel. The teammate starts immediately with the given prompt. " +
           "Each teammate gets their own git worktree for file isolation, or can be spawned into a predetermined agent space. " +
-          "Teammates work asynchronously and will message you when done. Do not poll for their status.",
+          "Teammates work asynchronously and will message you when done. Do not poll for their status." +
+          (deps.config.spaces && Object.keys(deps.config.spaces).length > 0
+            ? " Registered spaces: " + Object.entries(deps.config.spaces).map(([name, entry]) => {
+                const space = typeof entry === "string" ? { path: entry } : entry
+                const desc = space.description ? ` (${space.description})` : ""
+                return `${name}${desc}`
+              }).join(", ") + "."
+            : ""),
         args: {
           name: tool.schema.string().describe("Teammate name (lowercase alphanumeric with hyphens)"),
           agent: tool.schema.string().default("build").describe("Agent type (e.g. 'build', 'plan', 'explore')"),

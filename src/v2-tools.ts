@@ -98,7 +98,14 @@ export async function registerV2Tools(domain: V2ToolDomain, deps: ToolDeps): Pro
       description:
         "Spawn a new teammate that works in parallel. The teammate starts immediately with the given prompt. " +
         "Each teammate gets their own git worktree for file isolation, or can be spawned into a predetermined agent space. " +
-        "Teammates work asynchronously and will message you when done. Do not poll for their status.",
+        "Teammates work asynchronously and will message you when done. Do not poll for their status." +
+        (deps.config.spaces && Object.keys(deps.config.spaces).length > 0
+          ? " Registered spaces: " + Object.entries(deps.config.spaces).map(([name, entry]) => {
+              const space = typeof entry === "string" ? { path: entry } : entry
+              const desc = space.description ? ` (${space.description})` : ""
+              return `${name}${desc}`
+            }).join(", ") + "."
+          : ""),
       input: {
         type: "object",
         properties: {

@@ -1,4 +1,4 @@
-import { statSync } from "node:fs"
+import { statSync, mkdirSync } from "node:fs"
 import path from "node:path"
 import type { ToolDeps, PermissionRule } from "../types"
 import { validateMemberName } from "../util"
@@ -8,8 +8,10 @@ import { notifyLead } from "../notify"
 import { releaseMemberTasks } from "../tasks"
 import { parseModelId } from "../member-model"
 import { log } from "../log"
-import type { EnsembleConfig } from "../config"
+import type { EnsembleConfig, ResolvedSpace } from "../config"
 import { getTeamResourceParts, teamWorktreeName } from "./merge-helper"
+import { runCommand } from "../process"
+import { checkWorktreeDirty } from "./shared"
 
 /** Tracks consecutive spawn failures per team for circuit breaker. */
 export const spawnFailures = new Map<string, { count: number; lastError: string }>()
@@ -92,11 +94,6 @@ export async function executeTeamSpawn(
   args: { name: string; agent?: string | null; prompt: string; model?: string; claim_task?: string; worktree?: boolean; plan_approval?: boolean; space?: string },
   sessionId: string,
 ): Promise<string> {
-  // Normalize agent: the tool schema defaults to "build", but Zod's .default()
-  // only fires on undefined — an explicit null slips through and would violate
-  // the team_member.agent NOT NULL constraint (issue #28).
-  const agent = args.agent ?? "build"
-
   const nameError = validateMemberName(args.name)
   if (nameError) throw new Error(nameError)
 
@@ -116,6 +113,7 @@ export async function executeTeamSpawn(
   // Resolve space if specified
   let spaceName: string | null = null
   let spaceDir: string | null = null
+  let spaceConfig: ResolvedSpace | null = null
 
   if (args.space) {
     // Mutually exclusive with worktree
@@ -137,9 +135,18 @@ export async function executeTeamSpawn(
     }
 
     spaceName = args.space
-    spaceDir = spaces[args.space]!
+    const raw = spaces[args.space]!
+    // Resolve the union type: string shorthand → { path: string }, or pass through object
+    spaceConfig = typeof raw === "string" ? { path: raw } : { ...raw }
+    spaceDir = spaceConfig.path!
     log(`spawn:space name=${args.name} space=${spaceName} dir=${spaceDir}`)
   }
+
+  // Normalize agent: the tool schema defaults to "build", but Zod's .default()
+  // only fires on undefined — an explicit null slips through and would violate
+  // the team_member.agent NOT NULL constraint (issue #28).
+  // Space config's agent field is the fallback when no explicit arg is provided.
+  const agent = args.agent ?? spaceConfig?.agent ?? "build"
 
   const isReadOnly = agent === "plan" || agent === "explore"
   const useWorktree = !spaceDir && args.worktree !== false && !isReadOnly && !isWorktreeDirectory(deps.directory)
@@ -253,6 +260,103 @@ export async function executeTeamSpawn(
   // permissions, so explore stays read-only.
   permission.push({ permission: "execute", pattern: "*", action: "allow" })
 
+  // For url-based spaces, ensure the clone exists and is up to date before
+  // validating the directory. Clone-on-demand: first spawn clones, subsequent
+  // spawns fetch + fast-forward if safe.
+  if (spaceConfig?.url && spaceDir) {
+    const fs = await import("node:fs")
+    const cloneExists = fs.existsSync(path.join(spaceDir, ".git"))
+
+    if (!cloneExists) {
+      // First spawn: clone the repository
+      log(`spawn:clone:start name=${args.name} space=${spaceName} url=${spaceConfig.url}`)
+      // Ensure the parent directory exists
+      const parentDir = path.dirname(spaceDir)
+      try { mkdirSync(parentDir, { recursive: true }) } catch { /* may already exist */ }
+
+      const cloneResult = await runCommand(
+        ["git", "clone", spaceConfig.url, spaceDir],
+        { cwd: parentDir },
+      )
+      if (cloneResult.exitCode !== 0) {
+        const stderr = cloneResult.stderr.trim()
+        throw new Error(
+          `Failed to clone agent space "${spaceName}" from ${spaceConfig.url}: ${stderr || `exit code ${cloneResult.exitCode}`}. ` +
+          `Check that the URL is correct and that network access and authentication are available in the plugin process environment.`
+        )
+      }
+      log(`spawn:clone:done name=${args.name} space=${spaceName}`)
+    } else {
+      // Subsequent spawns: fetch and attempt fast-forward
+      log(`spawn:fetch:start name=${args.name} space=${spaceName}`)
+      const fetchResult = await runCommand(["git", "-C", spaceDir, "fetch", "origin"])
+      if (fetchResult.exitCode !== 0) {
+        const stderr = fetchResult.stderr.trim()
+        log(`spawn:fetch:failed name=${args.name} space=${spaceName} err=${stderr}`)
+        // Non-fatal: proceed with spawn using the clone as-is, notify the lead
+        notifyLead(
+          deps.client, deps.db, teamInfo.teamId,
+          `Space "${spaceName}" fetch failed: ${stderr}. Proceeding with the existing clone at ${spaceDir}.`,
+        )
+      } else {
+        // Determine default branch
+        let defaultBranch = ""
+        const symRef = await runCommand(
+          ["git", "-C", spaceDir, "symbolic-ref", "refs/remotes/origin/HEAD", "--short"],
+        )
+        if (symRef.exitCode === 0 && symRef.stdout.trim()) {
+          defaultBranch = symRef.stdout.trim().replace(/^origin\//, "")
+        } else {
+          const headResult = await runCommand(
+            ["git", "-C", spaceDir, "rev-parse", "--abbrev-ref", "HEAD"],
+          )
+          if (headResult.exitCode === 0 && headResult.stdout.trim()) {
+            defaultBranch = headResult.stdout.trim()
+          }
+        }
+
+        if (defaultBranch) {
+          // Check if working tree is dirty
+          const dirty = await checkWorktreeDirty(spaceDir)
+          if (dirty) {
+            log(`spawn:fetch:dirty name=${args.name} space=${spaceName}`)
+            notifyLead(
+              deps.client, deps.db, teamInfo.teamId,
+              `Space "${spaceName}" has uncommitted changes at ${spaceDir} — skipping fast-forward. Proceeding with the existing clone as-is.`,
+            )
+          } else {
+            // Check if fast-forward is possible
+            const isAncestor = await runCommand(
+              ["git", "-C", spaceDir, "merge-base", "--is-ancestor", "HEAD", `origin/${defaultBranch}`],
+            )
+            if (isAncestor.exitCode === 0) {
+              // Safe to fast-forward
+              const ffResult = await runCommand(
+                ["git", "-C", spaceDir, "merge", "--ff-only", `origin/${defaultBranch}`],
+              )
+              if (ffResult.exitCode !== 0) {
+                log(`spawn:fetch:ff-failed name=${args.name} space=${spaceName} err=${ffResult.stderr.trim()}`)
+                notifyLead(
+                  deps.client, deps.db, teamInfo.teamId,
+                  `Space "${spaceName}" fast-forward failed: ${ffResult.stderr.trim()}. Proceeding with the existing clone.`,
+                )
+              } else {
+                log(`spawn:fetch:ff-done name=${args.name} space=${spaceName}`)
+              }
+            } else {
+              // Diverged or local is ahead — do not touch the clone
+              log(`spawn:fetch:diverged name=${args.name} space=${spaceName}`)
+              notifyLead(
+                deps.client, deps.db, teamInfo.teamId,
+                `Space "${spaceName}" has diverged from origin at ${spaceDir} — needs manual attention. Proceeding with the existing clone.`,
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Validate space directory immediately before session.create.
   // The spike confirmed session.create({ directory }) silently falls back to
   // the global project on bad paths — this is the loud guard.
@@ -365,6 +469,9 @@ export async function executeTeamSpawn(
       `This is an independent git repository — manage its git history directly.`,
       `Your changes are isolated from the main project and from other teammates.`,
     )
+    if (spaceConfig?.description) {
+      context.push(`Space description: ${spaceConfig.description}`)
+    }
   } else if (worktreeBranch && worktreeDir && !workspaceId) {
     // Workspace binding failed — fallback to prompt-based CWD instruction
     context.push(
