@@ -39,7 +39,7 @@ describe("config", () => {
 
   test("returns defaults when no config files exist", () => {
     const config = loadConfig(tmpDir)
-    expect(config).toEqual(DEFAULT_CONFIG)
+    expect(config).toEqual({ ...DEFAULT_CONFIG, spaceCloneDir: path.join(tmpDir, "home", ".config", "opencode", "ensemble-spaces") })
   })
 
   test("project config overrides defaults", () => {
@@ -69,7 +69,7 @@ describe("config", () => {
     writeFileSync(path.join(configDir, "ensemble.json"), "not json{{{")
 
     const config = loadConfig(tmpDir)
-    expect(config).toEqual(DEFAULT_CONFIG)
+    expect(config).toEqual({ ...DEFAULT_CONFIG, spaceCloneDir: path.join(tmpDir, "home", ".config", "opencode", "ensemble-spaces") })
   })
 
   test("env var OPENCODE_ENSEMBLE_TIMEOUT overrides config", () => {
@@ -111,7 +111,7 @@ describe("config", () => {
       writeFileSync(path.join(configDir, "ensemble.json"), JSON.stringify({ spaces: { "infra": spaceDir } }))
 
       const config = loadConfig(tmpDir)
-      expect(config.spaces).toEqual({ "infra": spaceDir })
+      expect(config.spaces).toEqual({ "infra": { path: spaceDir } })
 
       rmSync(spaceDir, { recursive: true, force: true })
     })
@@ -177,7 +177,7 @@ describe("config", () => {
       writeFileSync(path.join(tmpDir, "file.txt"), "not a dir")
 
       const config = loadConfig(tmpDir)
-      expect(config.spaces).toEqual({ "good": validDir })
+      expect(config.spaces).toEqual({ "good": { path: validDir } })
 
       rmSync(validDir, { recursive: true, force: true })
     })

@@ -1,6 +1,25 @@
 import { readFileSync, statSync } from "node:fs"
 import path from "node:path"
 
+/** Resolved space configuration entry. */
+export interface ResolvedSpace {
+  /** Local directory path (for path-based spaces, or the resolved clone location for url-based spaces). */
+  path?: string
+  /** Git URL for clone-on-demand. Exactly one of path/url must be set. */
+  url?: string
+  /** Default agent type for this space (team_spawn arg overrides if explicit). */
+  agent?: string
+  /** Human-readable description surfaced in tool descriptions. */
+  description?: string
+  /** Flake input name to update when space work is pushed. */
+  flakeInput?: string
+  /** Auto-run `nix flake lock --update-input` on clean+pushed completion (default: false). */
+  autoUpdateFlakeInput?: boolean
+}
+
+/** Raw space entry: plain string (shorthand for { path: string }) or full object. */
+export type SpaceEntry = string | ResolvedSpace
+
 /** Plugin configuration shape. All fields optional — defaults applied. */
 export interface EnsembleConfig {
   /** Auto-merge worktree branches on cleanup (default: true) */
@@ -31,8 +50,10 @@ export interface EnsembleConfig {
   modelAssignment?: "default" | "rotate" | "random"
   /** Lead asks user about model preferences before spawning (default: false) */
   promptForModels?: boolean
-  /** Pre-registered agent spaces: name → absolute directory path (each must be a git repo) */
-  spaces?: Record<string, string>
+  /** Pre-registered agent spaces: name → path, url object, or string shorthand. */
+  spaces?: Record<string, SpaceEntry>
+  /** Directory for cloning url-based spaces (default: ~/.config/opencode/ensemble-spaces/) */
+  spaceCloneDir?: string
 }
 
 /** Default configuration values. */
@@ -52,6 +73,50 @@ export const DEFAULT_CONFIG: Required<EnsembleConfig> = {
   modelAssignment: "default",
   promptForModels: false,
   spaces: {},
+  spaceCloneDir: "",
+}
+
+/**
+ * Resolve a raw space entry (string shorthand or object) into a ResolvedSpace.
+ * String form `{ path }` is backward-compatible shorthand.
+ */
+export function resolveSpace(raw: SpaceEntry): ResolvedSpace {
+  if (typeof raw === "string") {
+    return { path: raw }
+  }
+  return { ...raw }
+}
+
+/**
+ * Validate a ResolvedSpace has exactly one of path/url set.
+ * Returns null if valid, or an error message string.
+ */
+export function validateSpaceEntry(name: string, space: ResolvedSpace): string | null {
+  if (space.path && space.url) {
+    return `Space "${name}" has both "path" and "url" — exactly one must be set`
+  }
+  if (!space.path && !space.url) {
+    return `Space "${name}" has neither "path" nor "url" — exactly one must be set`
+  }
+  if (space.url !== undefined && typeof space.url !== "string") {
+    return `Space "${name}" "url" must be a string`
+  }
+  if (space.path !== undefined && typeof space.path !== "string") {
+    return `Space "${name}" "path" must be a string`
+  }
+  if (space.agent !== undefined && typeof space.agent !== "string") {
+    return `Space "${name}" "agent" must be a string`
+  }
+  if (space.description !== undefined && typeof space.description !== "string") {
+    return `Space "${name}" "description" must be a string`
+  }
+  if (space.flakeInput !== undefined && typeof space.flakeInput !== "string") {
+    return `Space "${name}" "flakeInput" must be a string`
+  }
+  if (space.autoUpdateFlakeInput !== undefined && typeof space.autoUpdateFlakeInput !== "boolean") {
+    return `Space "${name}" "autoUpdateFlakeInput" must be a boolean`
+  }
+  return null
 }
 
 /** Read a JSON config file, returning an empty object on missing/invalid. */
@@ -79,11 +144,24 @@ function readConfigFile(filePath: string): Partial<EnsembleConfig> {
     if (typeof raw.modelAssignment === "string" && ["default", "rotate", "random"].includes(raw.modelAssignment)) result.modelAssignment = raw.modelAssignment as "default" | "rotate" | "random"
     if (typeof raw.promptForModels === "boolean") result.promptForModels = raw.promptForModels
     if (typeof raw.spaces === "object" && raw.spaces !== null && !Array.isArray(raw.spaces)) {
-      const valid = Object.entries(raw.spaces as Record<string, unknown>).every(
-        ([k, v]) => typeof k === "string" && typeof v === "string"
-      )
-      if (valid) result.spaces = raw.spaces as Record<string, string>
+      const validSpaces: Record<string, SpaceEntry> = {}
+      let valid = true
+      for (const [k, v] of Object.entries(raw.spaces as Record<string, unknown>)) {
+        if (typeof k !== "string") { valid = false; break }
+        if (typeof v === "string") {
+          validSpaces[k] = v
+        } else if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+          const resolved = resolveSpace(v as SpaceEntry)
+          const err = validateSpaceEntry(k, resolved)
+          if (err) { valid = false; console.warn(`[ensemble] ${err} — skipping`); continue }
+          validSpaces[k] = resolved
+        } else {
+          valid = false; break
+        }
+      }
+      if (valid) result.spaces = validSpaces
     }
+    if (typeof raw.spaceCloneDir === "string") result.spaceCloneDir = raw.spaceCloneDir
     return result
   } catch (err) {
     if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") return {}
@@ -115,27 +193,51 @@ export function loadConfig(projectDir: string): Required<EnsembleConfig> {
   const stall = process.env.STALL_THRESHOLD_MS
   if (stall !== undefined) merged.stallThresholdMs = stall === "0" ? 0 : (parseInt(stall, 10) || merged.stallThresholdMs)
 
-  // Validate space directories: must exist, be directories, and be git repos.
-  // Drop invalid entries with a warning rather than failing hard.
+  // Resolve default spaceCloneDir from home directory
+  if (!merged.spaceCloneDir) {
+    merged.spaceCloneDir = path.join(homeDir, ".config", "opencode", "ensemble-spaces")
+  }
+
+  // Validate space entries: normalize union type, check directory exists for path-based,
+  // validate URL for url-based. Drop invalid entries with a warning.
   if (merged.spaces && Object.keys(merged.spaces).length > 0) {
-    const validSpaces: Record<string, string> = {}
-    for (const [name, dir] of Object.entries(merged.spaces)) {
-      try {
-        const stat = statSync(dir)
-        if (!stat.isDirectory()) {
-          console.warn(`[ensemble] Space "${name}" path is not a directory: ${dir} — skipping`)
+    const validSpaces: Record<string, ResolvedSpace> = {}
+    for (const [name, raw] of Object.entries(merged.spaces)) {
+      const space = resolveSpace(raw)
+      const validationErr = validateSpaceEntry(name, space)
+      if (validationErr) {
+        console.warn(`[ensemble] ${validationErr} — skipping`)
+        continue
+      }
+
+      if (space.url) {
+        // URL-based space: skip directory-exists check (clone hasn't happened yet).
+        // Validate the URL is a non-empty string.
+        if (!space.url.trim()) {
+          console.warn(`[ensemble] Space "${name}" has an empty URL — skipping`)
           continue
         }
-        // Check for .git entry to confirm it's a git repository
+        // Resolve the deterministic clone path
+        space.path = path.join(merged.spaceCloneDir, name)
+        validSpaces[name] = space
+      } else if (space.path) {
+        // Path-based space: keep existing exists/isDirectory/.git checks
         try {
-          statSync(path.join(dir, ".git"))
+          const stat = statSync(space.path)
+          if (!stat.isDirectory()) {
+            console.warn(`[ensemble] Space "${name}" path is not a directory: ${space.path} — skipping`)
+            continue
+          }
+          try {
+            statSync(path.join(space.path, ".git"))
+          } catch {
+            console.warn(`[ensemble] Space "${name}" is not a git repository (no .git): ${space.path} — skipping`)
+            continue
+          }
+          validSpaces[name] = space
         } catch {
-          console.warn(`[ensemble] Space "${name}" is not a git repository (no .git): ${dir} — skipping`)
-          continue
+          console.warn(`[ensemble] Space "${name}" directory does not exist: ${space.path} — skipping`)
         }
-        validSpaces[name] = dir
-      } catch {
-        console.warn(`[ensemble] Space "${name}" directory does not exist: ${dir} — skipping`)
       }
     }
     merged.spaces = validSpaces
