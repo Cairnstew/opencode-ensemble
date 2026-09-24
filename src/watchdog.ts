@@ -245,14 +245,14 @@ export class Watchdog {
 
     const cutoff = Date.now() - this.ttlMs
     const stale = this.db.query(
-      `SELECT tm.team_id, tm.name, tm.session_id, tm.worktree_branch, t.name as team_name, p.name as project_name
+      `SELECT tm.team_id, tm.name, tm.session_id, tm.worktree_branch, tm.space_name, tm.space_dir, t.name as team_name, p.name as project_name
        FROM team_member tm
        JOIN team t ON tm.team_id = t.id
        JOIN project p ON t.project_id = p.id
        WHERE t.status = 'active'
          AND tm.status = 'busy'
          AND tm.time_updated < ?`
-    ).all(cutoff) as Array<{ team_id: string; name: string; session_id: string; worktree_branch: string | null; team_name: string; project_name: string }>
+    ).all(cutoff) as Array<{ team_id: string; name: string; session_id: string; worktree_branch: string | null; space_name: string | null; space_dir: string | null; team_name: string; project_name: string }>
 
     for (const member of stale) {
       // Preserve branch BEFORE abort — session.abort() may destroy the worktree + branch
@@ -279,11 +279,12 @@ export class Watchdog {
       // Notify AND wake the lead — a timed-out teammate is otherwise a silent
       // failure. This is the "leave recovery to the lead" path: we surface the
       // timeout, we do not auto-resume the teammate.
+      const spaceInfo = member.space_name ? ` They were working in agent space "${member.space_name}" at ${member.space_dir}.` : ""
       notifyLead(
         this.client,
         this.db,
         member.team_id,
-        `Teammate "${member.name}" timed out after exceeding the busy time limit and was aborted. Their in-progress work has been released. Review their session, then re-spawn or reassign the task if needed.`,
+        `Teammate "${member.name}" timed out after exceeding the busy time limit and was aborted. Their in-progress work has been released.${spaceInfo} Review their session, then re-spawn or reassign the task if needed.`,
       )
 
       // Abort session (best effort)
